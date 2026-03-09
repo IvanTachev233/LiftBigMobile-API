@@ -11,5 +11,5 @@ export const databaseConfig: TypeOrmModuleOptions = {
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../migrations/*{.ts,.js}'],
   migrationsRun: true,
-  synchronize: true, // Auto-create tables (dev only)
+  synchronize: process.env.NODE_ENV !== 'production',
 };
