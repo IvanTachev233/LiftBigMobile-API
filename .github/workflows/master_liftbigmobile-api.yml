@@ -23,17 +23,30 @@ jobs:
         with:
           node-version: '20'
 
-      - name: npm install, build, and test
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      # - name: Run tests
+      #   run: npm run test
+
+      - name: Prepare deployment artifact
         run: |
-          npm install
-          npm run build --if-present
-          # npm run test --if-present
+          mkdir -p deploy
+          cp -r dist deploy/
+          cp package.json deploy/
+          cp package-lock.json deploy/
+
+      - name: Install production dependencies in deploy folder
+        run: cd deploy && npm ci --omit=dev
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: deploy
 
   deploy:
     runs-on: ubuntu-latest
@@ -47,7 +60,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -62,5 +75,3 @@ jobs:
           app-name: 'LiftBigMobile-API'
           slot-name: 'Production'
           package: .
-
-          
