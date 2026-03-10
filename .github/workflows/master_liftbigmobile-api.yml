@@ -32,21 +32,16 @@ jobs:
       # - name: Run tests
       #   run: npm run test
 
-      - name: Prepare deployment artifact
+      - name: Create deployment zip
         run: |
-          mkdir -p deploy
-          cp -r dist deploy/
-          cp package.json deploy/
-          cp package-lock.json deploy/
-
-      - name: Install production dependencies in deploy folder
-        run: cd deploy && npm ci --omit=dev
+          cd dist && zip -r ../deploy.zip . && cd ..
+          zip deploy.zip package.json package-lock.json
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: deploy
+          path: deploy.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -74,4 +69,6 @@ jobs:
         with:
           app-name: 'LiftBigMobile-API'
           slot-name: 'Production'
-          package: .
+          package: deploy.zip
+        env:
+          SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'
