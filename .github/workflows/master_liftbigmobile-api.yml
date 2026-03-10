@@ -32,10 +32,14 @@ jobs:
       # - name: Run tests
       #   run: npm run test
 
-      - name: Create deployment zip
+      - name: Prepare deployment package
         run: |
-          cd dist && zip -r ../deploy.zip . && cd ..
-          zip deploy.zip package.json package-lock.json
+          mkdir -p staging
+          cp -r dist staging/
+          cp package.json staging/
+          cp package-lock.json staging/
+          cd staging && npm ci --omit=dev
+          cd staging && zip -r ../deploy.zip .
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -63,6 +67,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9BBDADFD35D84E71937F294F0D19695C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_83782005AAA7408C8139CF4647A19573 }}
 
+      - name: Stop app before deployment
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp stop --name LiftBigMobile-API --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
@@ -70,5 +80,9 @@ jobs:
           app-name: 'LiftBigMobile-API'
           slot-name: 'Production'
           package: deploy.zip
-        env:
-          SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'
+
+      - name: Start app after deployment
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp start --name LiftBigMobile-API --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
