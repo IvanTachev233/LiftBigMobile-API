@@ -32,10 +32,11 @@ jobs:
       # - name: Run tests
       #   run: npm run test
 
-      - name: Install production deps only
+      - name: Prepare deployment zip
         run: |
           rm -rf node_modules
           npm ci --omit=dev
+          zip -r deploy.zip dist node_modules package.json
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -44,39 +45,37 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9BBDADFD35D84E71937F294F0D19695C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_83782005AAA7408C8139CF4647A19573 }}
 
-      - name: Configure app settings
+      - name: Configure and deploy
         uses: azure/cli@v2
         with:
           inlineScript: |
+            # Configure app settings (works even when app is stopped)
             az webapp config appsettings set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --settings \
               SCM_DO_BUILD_DURING_DEPLOYMENT=false \
               NODE_ENV=production \
               WEBSITE_RUN_FROM_PACKAGE=0
+
             az webapp config set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --startup-file "node dist/main.js"
 
-      - name: Start app if stopped
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
+            # Start the app and wait for SCM site to be ready
             az webapp start --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || true
-            sleep 10
+            echo "Waiting for SCM site..."
+            sleep 30
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'LiftBigMobile-API'
-          slot-name: 'Production'
-          package: .
+            # Deploy using Kudu zip API via az rest
+            SUBSCRIPTION=$(az account show --query id -o tsv)
+            RG=${{ secrets.AZURE_RESOURCE_GROUP }}
+            az rest --method PUT \
+              --url "https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.Web/sites/LiftBigMobile-API/extensions/zipdeploy?api-version=2024-04-01" \
+              --headers "Content-Type=application/zip" \
+              --body @deploy.zip
 
-      - name: Restart app
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
+            # Restart to pick up new code
             az webapp restart --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
