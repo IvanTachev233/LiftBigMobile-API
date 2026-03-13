@@ -35,8 +35,7 @@ jobs:
       - name: Prepare deployment zip
         run: |
           rm -rf node_modules
-          npm ci --omit=dev
-          zip -r deploy.zip dist node_modules package.json
+          zip -r deploy.zip dist package.json package-lock.json
           ls -lh deploy.zip
 
       - name: Login to Azure
@@ -53,7 +52,7 @@ jobs:
             az webapp config appsettings set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --settings \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
               NODE_ENV=production
             az webapp config set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
@@ -67,7 +66,7 @@ jobs:
               --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --src deploy.zip \
-              --timeout 300
+              --timeout 600
 
       - name: Restart app
         uses: azure/cli@v2
