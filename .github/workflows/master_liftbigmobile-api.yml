@@ -64,12 +64,6 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9BBDADFD35D84E71937F294F0D19695C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_83782005AAA7408C8139CF4647A19573 }}
 
-      - name: Ensure app is started
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az webapp start --name LiftBigMobile-API --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-
       - name: Configure app settings
         uses: azure/cli@v2
         with:
@@ -78,20 +72,27 @@ jobs:
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --settings \
               SCM_DO_BUILD_DURING_DEPLOYMENT=false \
-              NODE_ENV=production
+              NODE_ENV=production \
+              WEBSITE_RUN_FROM_PACKAGE=0
             az webapp config set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --startup-file "node dist/main.js"
 
-      - name: Deploy to Azure Web App
+      - name: Deploy via Kudu zip deploy
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp deploy --name LiftBigMobile-API \
+            az webapp deployment source config-zip \
+              --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --src-path deploy.zip \
-              --type zip \
-              --clean true
+              --src deploy.zip
+
+      - name: Restart app
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp restart --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
 
       - name: Check deployment logs
         if: always()
