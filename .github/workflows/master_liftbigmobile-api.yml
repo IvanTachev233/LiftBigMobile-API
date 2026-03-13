@@ -64,33 +64,20 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9BBDADFD35D84E71937F294F0D19695C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_83782005AAA7408C8139CF4647A19573 }}
 
-      - name: Configure Azure App Settings
+      - name: Deploy to Azure Web App
         uses: azure/cli@v2
         with:
           inlineScript: |
             az webapp config appsettings set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+              --settings \
+              WEBSITE_RUN_FROM_PACKAGE=1 \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=false
             az webapp config set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --startup-file "node dist/main.js"
-
-      - name: Stop app before deployment
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az webapp stop --name LiftBigMobile-API --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
-
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'LiftBigMobile-API'
-          slot-name: 'Production'
-          package: deploy.zip
-
-      - name: Start app after deployment
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az webapp start --name LiftBigMobile-API --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+            az webapp deploy --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --src-path deploy.zip \
+              --type zip \
+              --clean true
