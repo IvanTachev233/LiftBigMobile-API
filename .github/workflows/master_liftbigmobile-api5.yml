@@ -53,31 +53,22 @@ jobs:
         uses: azure/cli@v2
         with:
           inlineScript: |
+            # Configure settings and startup command BEFORE deploy
             az webapp config appsettings set --name liftbigmobile-api5 \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --settings \
               SCM_DO_BUILD_DURING_DEPLOYMENT=false \
               NODE_ENV=production
 
-            # Clear startup command to stop crash loop, then start app
             az webapp config set --name liftbigmobile-api5 \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --startup-file ""
-
-            az webapp start --name liftbigmobile-api5 \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || true
-            sleep 30
+              --startup-file "node dist/main.js"
 
             # Deploy
             az webapp deploy --name liftbigmobile-api5 \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --src-path deploy.zip \
               --type zip
-
-            # Set startup command after deploy
-            az webapp config set --name liftbigmobile-api5 \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --startup-file "node dist/main.js"
 
             az webapp restart --name liftbigmobile-api5 \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
