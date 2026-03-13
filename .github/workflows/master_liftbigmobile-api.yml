@@ -59,14 +59,10 @@ jobs:
               --startup-file "node dist/main.js"
 
       - name: Deploy zip
-        uses: azure/cli@v2
+        uses: azure/webapps-deploy@v3
         with:
-          inlineScript: |
-            az webapp deployment source config-zip \
-              --name LiftBigMobile-API \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --src deploy.zip \
-              --timeout 600
+          app-name: 'LiftBigMobile-API'
+          package: deploy.zip
 
       - name: Restart app
         uses: azure/cli@v2
