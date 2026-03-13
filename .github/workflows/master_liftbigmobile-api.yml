@@ -10,10 +10,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -23,39 +24,18 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
+      - name: Install dependencies and build
+        run: |
+          npm install
+          npm run build
 
       # - name: Run tests
       #   run: npm run test
 
-      - name: Prepare deployment package
+      - name: Install production deps only
         run: |
           rm -rf node_modules
           npm ci --omit=dev
-          zip -r deploy.zip dist node_modules package.json
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: deploy.zip
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -78,14 +58,20 @@ jobs:
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --startup-file "node dist/main.js"
 
-      - name: Deploy via Kudu zip deploy
+      - name: Start app if stopped
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp deployment source config-zip \
-              --name LiftBigMobile-API \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --src deploy.zip
+            az webapp start --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} || true
+            sleep 10
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'LiftBigMobile-API'
+          slot-name: 'Production'
+          package: .
 
       - name: Restart app
         uses: azure/cli@v2
