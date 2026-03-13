@@ -77,8 +77,8 @@ jobs:
             az webapp config appsettings set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --settings \
-              WEBSITE_RUN_FROM_PACKAGE=1 \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=false
+              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+              NODE_ENV=production
             az webapp config set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --startup-file "node dist/main.js"
@@ -92,3 +92,13 @@ jobs:
               --src-path deploy.zip \
               --type zip \
               --clean true
+
+      - name: Check deployment logs
+        if: always()
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            sleep 30
+            az webapp log tail --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --timeout 60 || true
