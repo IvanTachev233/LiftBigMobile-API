@@ -34,13 +34,9 @@ jobs:
 
       - name: Prepare deployment package
         run: |
-          mkdir -p staging
-          cp -r dist staging/
-          cp package.json staging/
-          cp package-lock.json staging/
-          cd staging
+          rm -rf node_modules
           npm ci --omit=dev
-          zip -r ../deploy.zip .
+          zip -r deploy.zip dist node_modules package.json
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -67,6 +63,17 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4DB6C56D279242B2BF8B2F34D9C5ED7C }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9BBDADFD35D84E71937F294F0D19695C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_83782005AAA7408C8139CF4647A19573 }}
+
+      - name: Configure Azure App Settings
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config appsettings set --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+            az webapp config set --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --startup-file "node dist/main.js"
 
       - name: Stop app before deployment
         uses: azure/cli@v2
