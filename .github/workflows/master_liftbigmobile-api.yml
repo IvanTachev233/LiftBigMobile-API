@@ -38,8 +38,9 @@ jobs:
           cp -r dist staging/
           cp package.json staging/
           cp package-lock.json staging/
-          cd staging && npm ci --omit=dev
-          cd staging && zip -r ../deploy.zip .
+          cd staging
+          npm ci --omit=dev
+          zip -r ../deploy.zip .
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
