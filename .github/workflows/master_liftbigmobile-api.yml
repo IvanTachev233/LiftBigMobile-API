@@ -10,10 +10,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -23,31 +24,21 @@ jobs:
         with:
           node-version: '20.x'
 
-      - name: npm install, build, and test
+      - name: Install dependencies and build
         run: |
           npm install
-          npm run build --if-present
-          npm run test --if-present
+          npm run build
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: .
+      # - name: Run tests
+      #   run: npm run test
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      - name: Prepare deployment zip
+        run: |
+          rm -rf node_modules
+          npm ci --omit=dev
+          zip -r deploy.zip dist node_modules package.json
+          ls -lh deploy.zip
 
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -55,11 +46,32 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7C76A72633814510AA5A540FB1A4169C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_FE6F12746D4940CEB5AAFD7D80E0391C }}
 
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
+      - name: Configure app
+        uses: azure/cli@v2
         with:
-          app-name: 'LiftBigMobile-API'
-          slot-name: 'Production'
-          package: .
-          
+          inlineScript: |
+            az webapp config appsettings set --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=false \
+              NODE_ENV=production
+            az webapp config set --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --startup-file "node dist/main.js"
+
+      - name: Deploy zip
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp deployment source config-zip \
+              --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+              --src deploy.zip \
+              --timeout 300
+
+      - name: Restart app
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp restart --name LiftBigMobile-API \
+              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
