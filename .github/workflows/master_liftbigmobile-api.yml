@@ -64,7 +64,13 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9BBDADFD35D84E71937F294F0D19695C }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_83782005AAA7408C8139CF4647A19573 }}
 
-      - name: Deploy to Azure Web App
+      - name: Ensure app is started
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp start --name LiftBigMobile-API --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }}
+
+      - name: Configure app settings
         uses: azure/cli@v2
         with:
           inlineScript: |
@@ -76,6 +82,11 @@ jobs:
             az webapp config set --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --startup-file "node dist/main.js"
+
+      - name: Deploy to Azure Web App
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
             az webapp deploy --name LiftBigMobile-API \
               --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
               --src-path deploy.zip \
