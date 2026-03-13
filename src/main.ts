@@ -9,7 +9,7 @@ async function bootstrap() {
       'capacitor://localhost',
       'http://localhost:4200',
       'http://localhost:8100',
-      'https://liftbigmobile-api-a4eqcsf6f8chb3dp.westeurope-01.azurewebsites.net',
+      'https://liftbigmobile-api5.azurewebsites.net',
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
