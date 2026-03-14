@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsNumber,
   IsUUID,
+  IsBoolean,
   ValidateNested,
   IsArray,
 } from 'class-validator';
@@ -74,6 +75,10 @@ export class AddExerciseSetDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  made?: boolean | null;
 }
 
 export class PatchProgramExerciseDto {
@@ -88,4 +93,8 @@ export class PatchProgramExerciseDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  made?: boolean | null;
 }

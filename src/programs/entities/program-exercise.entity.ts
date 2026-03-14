@@ -38,4 +38,7 @@ export class ProgramExercise {
 
   @Column()
   order: number;
+
+  @Column({ type: 'boolean', nullable: true, default: null })
+  made: boolean | null;
 }

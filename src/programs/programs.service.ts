@@ -164,6 +164,7 @@ export class ProgramsService {
     if (dto.reps !== undefined) programExercise.reps = dto.reps;
     if (dto.weight !== undefined) programExercise.weight = dto.weight;
     if (dto.notes !== undefined) programExercise.notes = dto.notes;
+    if (dto.made !== undefined) programExercise.made = dto.made;
 
     return this.programExerciseRepo.save(programExercise);
   }
@@ -193,6 +194,7 @@ export class ProgramsService {
       reps: dto.reps,
       weight: dto.weight,
       notes: dto.notes,
+      made: dto.made ?? null,
       order: maxOrder + 1,
     });
 
