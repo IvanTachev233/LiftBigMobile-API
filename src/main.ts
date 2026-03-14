@@ -7,6 +7,7 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'capacitor://localhost',
+      'https://localhost',
       'http://localhost:4200',
       'http://localhost:8100',
       'https://liftbigmobile-api5.azurewebsites.net',
