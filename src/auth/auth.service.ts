@@ -46,7 +46,12 @@ export class AuthService {
       throw error;
     }
 
-    const payload = { email: user.email, sub: user.id, role: user.role };
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      role: user.role,
+      coachId: user.coachId,
+    };
     return {
       user,
       token: this.jwtService.sign(payload),
@@ -59,7 +64,12 @@ export class AuthService {
     });
 
     if (user && (await bcrypt.compare(loginDto.password, user.passwordHash))) {
-      const payload = { email: user.email, sub: user.id, role: user.role };
+      const payload = {
+        email: user.email,
+        sub: user.id,
+        role: user.role,
+        coachId: user.coachId,
+      };
       return {
         access_token: this.jwtService.sign(payload),
       };
@@ -121,7 +131,10 @@ export class AuthService {
     });
   }
 
-  async acceptInvite(token: string, clientId: string): Promise<User> {
+  async acceptInvite(
+    token: string,
+    clientId: string,
+  ): Promise<{ user: User; access_token: string }> {
     const invite = await this.inviteRepository.findOne({
       where: { token },
     });
@@ -168,7 +181,17 @@ export class AuthService {
     invite.status = InviteStatus.ACCEPTED;
     await this.inviteRepository.save(invite);
 
-    return client;
+    const payload = {
+      email: client.email,
+      sub: client.id,
+      role: client.role,
+      coachId: client.coachId,
+    };
+
+    return {
+      user: client,
+      access_token: this.jwtService.sign(payload),
+    };
   }
 
   async removeClient(coachId: string, clientId: string): Promise<void> {
