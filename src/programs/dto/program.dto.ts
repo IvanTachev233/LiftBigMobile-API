@@ -45,6 +45,13 @@ export class CreateProgramDto {
   exercises: CreateProgramExerciseDto[];
 }
 
+// Sets sent back by the coach editor carry their id so they are updated in place
+export class UpdateProgramExerciseDto extends CreateProgramExerciseDto {
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+}
+
 export class UpdateProgramDto {
   @IsOptional()
   @IsString()
@@ -57,8 +64,8 @@ export class UpdateProgramDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateProgramExerciseDto)
-  exercises?: CreateProgramExerciseDto[];
+  @Type(() => UpdateProgramExerciseDto)
+  exercises?: UpdateProgramExerciseDto[];
 }
 
 export class AddExerciseSetDto {

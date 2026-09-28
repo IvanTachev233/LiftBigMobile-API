@@ -39,8 +39,8 @@ export class ProgramExercise {
   })
   weight: number;
 
-  @Column({ nullable: true })
-  notes: string;
+  @Column({ type: 'varchar', nullable: true })
+  notes: string | null;
 
   @Column()
   order: number;
