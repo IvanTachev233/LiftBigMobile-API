@@ -1,98 +1,64 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# LiftBig API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The backend for LiftBig, a strength-training app for coaches and clients. It handles auth (JWT), coach–client invites, programs and workouts.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Stack: NestJS 11, TypeORM 0.3, PostgreSQL 15. The mobile/web client lives in [LiftBigMobile](https://github.com/IvanTachev233/LiftBigMobile).
 
-## Description
+> **Running the whole app?** Start with the [LiftBigMobile README](https://github.com/IvanTachev233/LiftBigMobile#readme). It covers cloning both repos side by side, the Docker stack and the day-to-day dev loop. This README covers the API on its own.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Prerequisites
 
-## Project setup
+- **Node.js 22** (NestJS 11 needs 20.11 or newer; the app repo pins 22, so use that for both).
+- **PostgreSQL**, most easily through the app repo's compose file: `docker compose up -d postgres` from `liftbig-app/`. It listens on host port **5433**.
+
+## Run locally
 
 ```bash
-$ npm install
+npm install
+npm run start:dev    # watch mode on http://localhost:3000
 ```
 
-## Compile and run the project
+With no environment variables set, the API connects to `localhost:5433` as `liftbig` / `password123` to database `liftbig_db`, which matches the compose file's local database. Outside production, TypeORM `synchronize` is on, so the schema is created and updated from the entities on startup.
+
+Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build` then `npm run start:prod` (runs `dist/main`).
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DB_HOST` | `localhost` | PostgreSQL host (`postgres` inside Docker Compose) |
+| `DB_PORT` | `5433` | PostgreSQL port (`5432` inside Docker Compose) |
+| `DB_USERNAME` | `liftbig` | Database user |
+| `DB_PASSWORD` | `password123` | Database password (local placeholder only) |
+| `DB_NAME` | `liftbig_db` | Database name |
+| `PORT` | `3000` | HTTP port |
+| `JWT_SECRET` | `super-secret-key` | Signs access tokens (valid for 60 minutes). **Must be set to a strong secret anywhere other than your machine.** |
+| `NODE_ENV` | unset | `production` turns on SSL for the DB connection and turns off automatic schema sync (unless `TYPEORM_SYNC=true`) |
+| `TYPEORM_SYNC` | unset | `true` forces TypeORM `synchronize` on, even in production |
+| `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
+
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET` and `PORT`. `.env` is gitignored.
+
+## Tests and checks
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run build
+npm test            # unit tests (Jest)
+npm run test:e2e    # boots the full AppModule, so it needs the database running
+npm run test:cov
+npm run lint        # ESLint with --fix: it rewrites files
+npm run format      # Prettier
 ```
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+> Deploying changes production data. Talk to the maintainer before deploying.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+- **Google Cloud Run** is the current production target (the app's production build points at a `*.run.app` URL). The maintainer deploys with an interactive script, `deploy_backend.sh`, which lives in their local workspace rather than in this repo. It sets `TYPEORM_SYNC=true` and `RUN_MIGRATIONS=true`, so **entity changes alter the production schema on deploy**. Adding nullable columns is safe. Treat renames, type changes and column removals as destructive.
+- **Azure Web App**: every push to `master` runs [`.github/workflows/master_liftbigmobile-api5.yml`](.github/workflows/master_liftbigmobile-api5.yml), which builds and deploys to the `liftbigmobile-api5` Azure Web App. Whether that target is still in use isn't documented. Check before pushing to `master`.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+## Gotchas
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- Nullable columns need an explicit type: `@Column({ type: 'varchar', nullable: true }) field: string | null`. Without `type`, TypeORM fails at runtime with "Data type Object not supported".
+- CORS only allows `http://localhost:4200`, `http://localhost:8100`, `capacitor://localhost`, `https://localhost` and the Azure origin (see `src/main.ts`). Add an origin there if you serve the client from somewhere else.
+- Never commit database dumps or deploy archives (`liftbig_dump.sql` and `deploy.zip` are gitignored).
