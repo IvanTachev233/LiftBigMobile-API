@@ -1,11 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-  app.getHttpAdapter().getInstance().set('etag', false);
+  app.set('etag', false);
   // Exact deployed web origins, comma-separated (e.g. https://liftbig.web.app)
   const extraOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
@@ -25,4 +26,4 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { User } from './user.entity';
 import { Invite, InviteStatus } from './invite.entity';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
@@ -41,7 +41,7 @@ export class AuthService {
     try {
       await this.usersRepository.save(user);
     } catch (error) {
-      if (error.code === '23505') {
+      if ((error as { code?: string }).code === '23505') {
         throw new ConflictException('Email already exists');
       }
       throw error;

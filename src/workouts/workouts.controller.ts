@@ -9,6 +9,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { WorkoutsService } from './workouts.service';
 import { CreateWorkoutDto, UpdateWorkoutDto } from './dto/workout.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -22,7 +23,10 @@ export class WorkoutsController {
   constructor(private readonly workoutsService: WorkoutsService) {}
 
   @Post()
-  create(@Body() createWorkoutDto: CreateWorkoutDto, @Request() req) {
+  create(
+    @Body() createWorkoutDto: CreateWorkoutDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.workoutsService.create(createWorkoutDto, req.user);
   }
 
@@ -32,17 +36,17 @@ export class WorkoutsController {
   }
 
   @Get()
-  findAll(@Request() req) {
+  findAll(@Request() req: AuthenticatedRequest) {
     return this.workoutsService.findAll(req.user);
   }
 
   @Get('upcoming')
-  findUpcoming(@Request() req) {
+  findUpcoming(@Request() req: AuthenticatedRequest) {
     return this.workoutsService.findUpcoming(req.user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Request() req) {
+  findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.workoutsService.findOne(id, req.user);
   }
 
@@ -50,13 +54,13 @@ export class WorkoutsController {
   update(
     @Param('id') id: string,
     @Body() updateWorkoutDto: UpdateWorkoutDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ) {
     return this.workoutsService.update(id, updateWorkoutDto, req.user);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Request() req) {
+  remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.workoutsService.remove(id, req.user);
   }
 }

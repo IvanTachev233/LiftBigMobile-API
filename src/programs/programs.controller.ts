@@ -10,6 +10,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { ProgramsService } from './programs.service';
 import {
   CreateProgramDto,
@@ -33,7 +34,7 @@ export class ProgramsController {
   @UseGuards(RolesGuard)
   @Roles('COACH')
   @ApiOperation({ summary: 'Create a program for a client' })
-  create(@Body() dto: CreateProgramDto, @Request() req) {
+  create(@Body() dto: CreateProgramDto, @Request() req: AuthenticatedRequest) {
     return this.programsService.create(dto, req.user.id);
   }
 
@@ -41,7 +42,7 @@ export class ProgramsController {
   @UseGuards(RolesGuard)
   @Roles('CLIENT')
   @ApiOperation({ summary: "Get client's upcoming programs" })
-  findUpcoming(@Request() req) {
+  findUpcoming(@Request() req: AuthenticatedRequest) {
     return this.programsService.findUpcoming(req.user.id);
   }
 
@@ -49,13 +50,16 @@ export class ProgramsController {
   @UseGuards(RolesGuard)
   @Roles('COACH')
   @ApiOperation({ summary: 'Get all programs for a specific client' })
-  findByClient(@Param('clientId') clientId: string, @Request() req) {
+  findByClient(
+    @Param('clientId') clientId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.programsService.findByClient(clientId, req.user.id);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific program' })
-  findOne(@Param('id') id: string, @Request() req) {
+  findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.programsService.findOne(id, req.user.id, req.user.role);
   }
 
@@ -66,7 +70,7 @@ export class ProgramsController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateProgramDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ) {
     return this.programsService.update(id, dto, req.user.id);
   }
@@ -78,7 +82,7 @@ export class ProgramsController {
   addExerciseSet(
     @Param('id') programId: string,
     @Body() dto: AddExerciseSetDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ) {
     return this.programsService.addExerciseSet(programId, dto, req.user.id);
   }
@@ -91,7 +95,7 @@ export class ProgramsController {
     @Param('id') programId: string,
     @Param('exerciseId') exerciseId: string,
     @Body() dto: PatchProgramExerciseDto,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ) {
     return this.programsService.patchExercise(
       programId,
@@ -105,7 +109,7 @@ export class ProgramsController {
   @UseGuards(RolesGuard)
   @Roles('COACH')
   @ApiOperation({ summary: 'Delete a program' })
-  remove(@Param('id') id: string, @Request() req) {
+  remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.programsService.remove(id, req.user.id);
   }
 }

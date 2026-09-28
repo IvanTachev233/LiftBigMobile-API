@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddMadeToProgramExercise1709800000004
-  implements MigrationInterface
-{
+export class AddMadeToProgramExercise1709800000004 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `ALTER TABLE "program_exercise" ADD COLUMN IF NOT EXISTS "made" boolean DEFAULT NULL`,

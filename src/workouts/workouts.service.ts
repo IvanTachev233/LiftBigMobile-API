@@ -5,7 +5,7 @@ import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { Exercise } from './entities/exercise.entity';
 import { WorkoutSet } from './entities/workout-set.entity';
 import { CreateWorkoutDto, UpdateWorkoutDto } from './dto/workout.dto';
-import { User } from '../auth/user.entity';
+import { AuthUser } from '../auth/auth-user.interface';
 
 @Injectable()
 export class WorkoutsService {
@@ -24,7 +24,7 @@ export class WorkoutsService {
 
   async create(
     createWorkoutDto: CreateWorkoutDto,
-    user: User,
+    user: AuthUser,
   ): Promise<Workout> {
     const workout = this.workoutRepo.create({
       ...createWorkoutDto,
@@ -35,7 +35,7 @@ export class WorkoutsService {
     return this.workoutRepo.save(workout);
   }
 
-  async findAll(user: User): Promise<Workout[]> {
+  async findAll(user: AuthUser): Promise<Workout[]> {
     return this.workoutRepo.find({
       where: { userId: user.id },
       order: { date: 'DESC' },
@@ -43,7 +43,7 @@ export class WorkoutsService {
     });
   }
 
-  async findUpcoming(user: User): Promise<Workout[]> {
+  async findUpcoming(user: AuthUser): Promise<Workout[]> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -58,7 +58,7 @@ export class WorkoutsService {
     });
   }
 
-  async findOne(id: string, user: User): Promise<Workout> {
+  async findOne(id: string, user: AuthUser): Promise<Workout> {
     const workout = await this.workoutRepo.findOne({
       where: { id, userId: user.id },
       relations: ['sets', 'sets.exercise'],
@@ -72,7 +72,7 @@ export class WorkoutsService {
   async update(
     id: string,
     updateWorkoutDto: UpdateWorkoutDto,
-    user: User,
+    user: AuthUser,
   ): Promise<Workout> {
     const workout = await this.findOne(id, user);
 
@@ -84,7 +84,7 @@ export class WorkoutsService {
       await this.setRepo.delete({ workoutId: id });
 
       // Create new sets with proper workoutId
-      const newSets = incomingSets.map((s: any, i: number) =>
+      const newSets = incomingSets.map((s, i) =>
         this.setRepo.create({
           workoutId: id,
           exerciseId: s.exerciseId || s.exercise?.id,
@@ -106,7 +106,7 @@ export class WorkoutsService {
     return this.workoutRepo.save(workout);
   }
 
-  async remove(id: string, user: User): Promise<void> {
+  async remove(id: string, user: AuthUser): Promise<void> {
     const result = await this.workoutRepo.delete({ id, userId: user.id });
     if (result.affected === 0) {
       throw new NotFoundException(`Workout with ID "${id}" not found`);
