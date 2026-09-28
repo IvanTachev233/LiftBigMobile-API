@@ -37,7 +37,7 @@ export class ProgramExercise {
     nullable: true,
     transformer: decimalTransformer,
   })
-  weight: number;
+  weight: number | null;
 
   @Column({ type: 'varchar', nullable: true })
   notes: string | null;
