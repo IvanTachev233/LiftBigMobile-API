@@ -32,9 +32,7 @@ export class ProgramsService {
     });
 
     if (!client) {
-      throw new ForbiddenException(
-        'Client not found or not assigned to you',
-      );
+      throw new ForbiddenException('Client not found or not assigned to you');
     }
 
     const program = this.programRepo.create({
@@ -56,10 +54,7 @@ export class ProgramsService {
     return this.programRepo.save(program);
   }
 
-  async findByClient(
-    clientId: string,
-    coachId: string,
-  ): Promise<Program[]> {
+  async findByClient(clientId: string, coachId: string): Promise<Program[]> {
     return this.programRepo.find({
       where: { clientId, coachId },
       relations: ['exercises', 'exercises.exercise'],
@@ -81,11 +76,7 @@ export class ProgramsService {
     });
   }
 
-  async findOne(
-    id: string,
-    userId: string,
-    role: string,
-  ): Promise<Program> {
+  async findOne(id: string, userId: string, role: string): Promise<Program> {
     const where =
       role === 'COACH' ? { id, coachId: userId } : { id, clientId: userId };
 

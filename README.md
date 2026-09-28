@@ -26,6 +26,7 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `DATABASE_URL` | unset | Full PostgreSQL connection URL (e.g. Neon). When set, the `DB_*` variables below are ignored |
 | `DB_HOST` | `localhost` | PostgreSQL host (`postgres` inside Docker Compose) |
 | `DB_PORT` | `5433` | PostgreSQL port (`5432` inside Docker Compose) |
 | `DB_USERNAME` | `liftbig` | Database user |
@@ -36,8 +37,9 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `NODE_ENV` | unset | `production` turns on SSL for the DB connection and turns off automatic schema sync (unless `TYPEORM_SYNC=true`) |
 | `TYPEORM_SYNC` | unset | `true` forces TypeORM `synchronize` on, even in production |
 | `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
+| `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET` and `PORT`. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT` and `CORS_ORIGINS`. `.env` is gitignored.
 
 ## Tests and checks
 
@@ -60,5 +62,5 @@ npm run format      # Prettier
 ## Gotchas
 
 - Nullable columns need an explicit type: `@Column({ type: 'varchar', nullable: true }) field: string | null`. Without `type`, TypeORM fails at runtime with "Data type Object not supported".
-- CORS only allows `http://localhost:4200`, `http://localhost:8100`, `capacitor://localhost`, `https://localhost` and the Azure origin (see `src/main.ts`). Add an origin there if you serve the client from somewhere else.
+- CORS always allows `http://localhost:4200`, `http://localhost:8100`, `capacitor://localhost` and `https://localhost` (see `src/main.ts`). Allow any other client origin through `CORS_ORIGINS` rather than editing the code.
 - Never commit database dumps or deploy archives (`liftbig_dump.sql` and `deploy.zip` are gitignored).

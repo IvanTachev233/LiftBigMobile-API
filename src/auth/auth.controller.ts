@@ -8,6 +8,7 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
+import type { AuthenticatedRequest } from './auth-user.interface';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -37,7 +38,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('COACH')
   @ApiOperation({ summary: "Get coach's client list" })
-  async getClients(@Request() req) {
+  async getClients(@Request() req: AuthenticatedRequest) {
     return this.authService.getClients(req.user.id);
   }
 
@@ -48,7 +49,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Remove a client' })
   async removeClient(
     @Param('clientId') clientId: string,
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
   ) {
     return this.authService.removeClient(req.user.id, clientId);
   }
@@ -58,7 +59,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('COACH')
   @ApiOperation({ summary: 'Send an invite to a client' })
-  async createInvite(@Body() body: { email: string }, @Request() req) {
+  async createInvite(
+    @Body() body: { email: string },
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.authService.createInvite(req.user.id, body.email);
   }
 
@@ -67,7 +71,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('COACH')
   @ApiOperation({ summary: 'Get pending invites' })
-  async getPendingInvites(@Request() req) {
+  async getPendingInvites(@Request() req: AuthenticatedRequest) {
     return this.authService.getPendingInvites(req.user.id);
   }
 
@@ -76,7 +80,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('CLIENT')
   @ApiOperation({ summary: 'Accept a coach invite' })
-  async acceptInvite(@Param('token') token: string, @Request() req) {
+  async acceptInvite(
+    @Param('token') token: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.authService.acceptInvite(token, req.user.id);
   }
 }
