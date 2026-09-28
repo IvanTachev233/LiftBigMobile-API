@@ -5,6 +5,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { decimalTransformer } from '../../common/decimal.transformer';
 import { Program } from './program.entity';
 import { Exercise } from '../../workouts/entities/exercise.entity';
 
@@ -30,7 +31,12 @@ export class ProgramExercise {
   @Column()
   reps: number;
 
-  @Column('decimal', { precision: 6, scale: 2, nullable: true })
+  @Column('decimal', {
+    precision: 6,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
   weight: number;
 
   @Column({ nullable: true })

@@ -5,6 +5,7 @@ import {
   ManyToOne,
   OneToMany,
 } from 'typeorm';
+import { decimalTransformer } from '../../common/decimal.transformer';
 import { User } from '../../auth/user.entity';
 import { WorkoutSet } from './workout-set.entity';
 
@@ -37,7 +38,7 @@ export class Workout {
   @Column({ default: false })
   isTemplate: boolean;
 
-  @Column('decimal', { default: 0 })
+  @Column('decimal', { default: 0, transformer: decimalTransformer })
   totalWeightLifted: number;
 
   @Column({

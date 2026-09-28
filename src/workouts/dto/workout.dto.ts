@@ -5,18 +5,9 @@ import {
   IsBoolean,
   IsEnum,
   IsNumber,
-  ValidateNested,
-  IsUUID,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 import { WorkoutStatus } from '../entities/workout.entity';
-import { WeightMode } from '../entities/workout-set.entity';
-
 import { BodyPart } from '../entities/exercise.entity';
-
-// Fix imports - WorkoutStatus is in workout.entity.ts, BodyPart in exercise.entity.ts
-// Re-exporting them in DTO file or Importing correctly.
-// Let's rely on the entity files.
 
 export class CreateWorkoutDto {
   @IsDateString()
@@ -32,6 +23,16 @@ export class CreateWorkoutDto {
   @IsOptional()
   @IsBoolean()
   isTemplate?: boolean;
+}
+
+// Set shape sent by the workout logger; not validated beyond being present
+export interface WorkoutSetInput {
+  exerciseId?: string;
+  exercise?: { id: string };
+  weight: number;
+  reps: number;
+  order?: number;
+  isCompleted?: boolean;
 }
 
 export class UpdateWorkoutDto {
@@ -52,7 +53,7 @@ export class UpdateWorkoutDto {
   date?: string;
 
   @IsOptional()
-  sets?: any[];
+  sets?: WorkoutSetInput[];
 }
 
 export class LogSetDto {

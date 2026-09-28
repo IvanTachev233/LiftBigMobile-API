@@ -16,7 +16,7 @@ import { RolesGuard } from './roles.guard';
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'super-secret-key',
         signOptions: { expiresIn: '60m' },
       }),
