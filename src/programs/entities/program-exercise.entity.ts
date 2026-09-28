@@ -31,10 +31,10 @@ export class ProgramExercise {
   reps: number;
 
   @Column('decimal', { precision: 6, scale: 2, nullable: true })
-  weight: number;
+  weight: number | null;
 
-  @Column({ nullable: true })
-  notes: string;
+  @Column({ type: 'varchar', nullable: true })
+  notes: string | null;
 
   @Column()
   order: number;

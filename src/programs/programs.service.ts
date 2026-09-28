@@ -120,18 +120,28 @@ export class ProgramsService {
       program.scheduledDate = new Date(dto.scheduledDate);
 
     if (dto.exercises !== undefined) {
-      await this.programExerciseRepo.delete({ programId: id });
+      // Update sets in place by id so client-logged results (made) survive a
+      // coach edit; ids that don't belong to this program become new sets.
+      const existing = new Map(program.exercises.map((e) => [e.id, e]));
+      const keptIds = new Set<string>();
 
-      program.exercises = dto.exercises.map((e) =>
-        this.programExerciseRepo.create({
-          programId: id,
-          exerciseId: e.exerciseId,
-          reps: e.reps,
-          weight: e.weight,
-          notes: e.notes,
-          order: e.order,
-        }),
-      );
+      program.exercises = dto.exercises.map((e) => {
+        const current = e.id && !keptIds.has(e.id) && existing.get(e.id);
+        const set =
+          current || this.programExerciseRepo.create({ programId: id });
+        if (current) keptIds.add(current.id);
+        set.exerciseId = e.exerciseId;
+        set.reps = e.reps;
+        set.weight = e.weight ?? null;
+        set.notes = e.notes ?? null;
+        set.order = e.order;
+        return set;
+      });
+
+      const removedIds = [...existing.keys()].filter((k) => !keptIds.has(k));
+      if (removedIds.length > 0) {
+        await this.programExerciseRepo.delete(removedIds);
+      }
 
       await this.programExerciseRepo.save(program.exercises);
     }
