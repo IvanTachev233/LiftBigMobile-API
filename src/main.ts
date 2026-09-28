@@ -1,16 +1,23 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
   app.getHttpAdapter().getInstance().set('etag', false);
+  // Exact deployed web origins, comma-separated (e.g. https://liftbig.web.app)
+  const extraOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
     origin: [
       'capacitor://localhost',
       'https://localhost',
       'http://localhost:4200',
       'http://localhost:8100',
-      'https://liftbigmobile-api5.azurewebsites.net',
+      ...extraOrigins,
     ],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,

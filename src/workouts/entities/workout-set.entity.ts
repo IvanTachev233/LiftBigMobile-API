@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import { decimalTransformer } from '../../common/decimal.transformer';
 import { Workout } from './workout.entity';
 import { Exercise } from './exercise.entity';
 
@@ -28,7 +29,11 @@ export class WorkoutSet {
   @Column()
   reps: number;
 
-  @Column('decimal', { precision: 5, scale: 2 })
+  @Column('decimal', {
+    precision: 5,
+    scale: 2,
+    transformer: decimalTransformer,
+  })
   weight: number;
 
   @Column({
@@ -38,13 +43,13 @@ export class WorkoutSet {
   })
   weightMode: WeightMode;
 
-  @Column('decimal', { nullable: true })
+  @Column('decimal', { nullable: true, transformer: decimalTransformer })
   expectedWeight: number;
 
   @Column({ nullable: true })
   actualReps: number;
 
-  @Column('decimal', { nullable: true })
+  @Column('decimal', { nullable: true, transformer: decimalTransformer })
   actualWeight: number;
 
   @Column({ default: false })

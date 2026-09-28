@@ -5,7 +5,7 @@ export class AddMadeToProgramExercise1709800000004
 {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
-      `ALTER TABLE "program_exercise" ADD "made" boolean DEFAULT NULL`,
+      `ALTER TABLE "program_exercise" ADD COLUMN IF NOT EXISTS "made" boolean DEFAULT NULL`,
     );
   }
 

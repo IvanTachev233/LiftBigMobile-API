@@ -32,6 +32,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
     const user = this.usersRepository.create({
+      name: registerDto.name,
       email: registerDto.email,
       passwordHash: hashedPassword,
       role: registerDto.role || 'CLIENT',
@@ -48,10 +49,12 @@ export class AuthService {
 
     const payload = {
       email: user.email,
+      name: user.name,
       sub: user.id,
       role: user.role,
       coachId: user.coachId,
     };
+    delete (user as { passwordHash?: string }).passwordHash;
     return {
       user,
       token: this.jwtService.sign(payload),
@@ -59,13 +62,16 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const user = await this.usersRepository.findOne({
-      where: { email: loginDto.email },
-    });
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .addSelect('user.passwordHash')
+      .where('user.email = :email', { email: loginDto.email })
+      .getOne();
 
     if (user && (await bcrypt.compare(loginDto.password, user.passwordHash))) {
       const payload = {
         email: user.email,
+        name: user.name,
         sub: user.id,
         role: user.role,
         coachId: user.coachId,
@@ -80,14 +86,11 @@ export class AuthService {
   async getClients(coachId: string): Promise<User[]> {
     return this.usersRepository.find({
       where: { coachId },
-      select: ['id', 'email', 'role'],
+      select: ['id', 'name', 'email', 'role'],
     });
   }
 
-  async createInvite(
-    coachId: string,
-    clientEmail: string,
-  ): Promise<Invite> {
+  async createInvite(coachId: string, clientEmail: string): Promise<Invite> {
     const existingClient = await this.usersRepository.findOne({
       where: { email: clientEmail },
     });
@@ -183,11 +186,13 @@ export class AuthService {
 
     const payload = {
       email: client.email,
+      name: client.name,
       sub: client.id,
       role: client.role,
       coachId: client.coachId,
     };
 
+    delete (client as { passwordHash?: string }).passwordHash;
     return {
       user: client,
       access_token: this.jwtService.sign(payload),
