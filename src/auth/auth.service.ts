@@ -13,7 +13,7 @@ import { User } from './user.entity';
 import { Invite, InviteStatus } from './invite.entity';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import * as bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 @Injectable()
 export class AuthService {
@@ -116,7 +116,7 @@ export class AuthService {
     const invite = this.inviteRepository.create({
       coachId,
       clientEmail,
-      token: uuidv4(),
+      token: randomUUID(),
       status: InviteStatus.PENDING,
       expiresAt,
     });
