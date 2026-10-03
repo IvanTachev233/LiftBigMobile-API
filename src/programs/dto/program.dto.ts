@@ -27,6 +27,11 @@ export class CreateProgramExerciseDto {
 
   @IsNumber()
   order: number;
+
+  // Program exercises sharing the same value form one superset.
+  @IsOptional()
+  @IsUUID()
+  supersetGroup?: string;
 }
 
 export class CreateProgramDto {

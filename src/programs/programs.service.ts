@@ -2,12 +2,15 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThanOrEqual } from 'typeorm';
 import { Program } from './entities/program.entity';
 import { ProgramExercise } from './entities/program-exercise.entity';
+import { Exercise } from '../workouts/entities/exercise.entity';
 import { User } from '../auth/user.entity';
+import { isExerciseVisible } from '../workouts/exercise-visibility.util';
 import {
   CreateProgramDto,
   UpdateProgramDto,
@@ -22,9 +25,31 @@ export class ProgramsService {
     private programRepo: Repository<Program>,
     @InjectRepository(ProgramExercise)
     private programExerciseRepo: Repository<ProgramExercise>,
+    @InjectRepository(Exercise)
+    private exerciseRepo: Repository<Exercise>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
   ) {}
+
+  // Program exercises must be global or created by the program's coach
+  private async assertExercisesVisible(
+    exerciseIds: string[],
+    coachId: string,
+  ): Promise<void> {
+    const uniqueIds = [...new Set(exerciseIds)];
+    for (const exerciseId of uniqueIds) {
+      const visible = await isExerciseVisible(
+        this.exerciseRepo,
+        exerciseId,
+        coachId,
+      );
+      if (!visible) {
+        throw new BadRequestException(
+          `Exercise "${exerciseId}" is not visible to you`,
+        );
+      }
+    }
+  }
 
   async create(dto: CreateProgramDto, coachId: string): Promise<Program> {
     const client = await this.userRepo.findOne({
@@ -34,6 +59,11 @@ export class ProgramsService {
     if (!client) {
       throw new ForbiddenException('Client not found or not assigned to you');
     }
+
+    await this.assertExercisesVisible(
+      dto.exercises.map((e) => e.exerciseId),
+      coachId,
+    );
 
     const program = this.programRepo.create({
       clientId: dto.clientId,
@@ -47,6 +77,7 @@ export class ProgramsService {
           weight: e.weight,
           notes: e.notes,
           order: e.order,
+          supersetGroup: e.supersetGroup ?? null,
         }),
       ),
     });
@@ -111,6 +142,11 @@ export class ProgramsService {
       program.scheduledDate = new Date(dto.scheduledDate);
 
     if (dto.exercises !== undefined) {
+      await this.assertExercisesVisible(
+        dto.exercises.map((e) => e.exerciseId),
+        coachId,
+      );
+
       // Update sets in place by id so client-logged results (made) survive a
       // coach edit; ids that don't belong to this program become new sets.
       const existing = new Map(program.exercises.map((e) => [e.id, e]));
@@ -126,6 +162,7 @@ export class ProgramsService {
         set.weight = e.weight ?? null;
         set.notes = e.notes ?? null;
         set.order = e.order;
+        set.supersetGroup = e.supersetGroup ?? null;
         return set;
       });
 
@@ -183,6 +220,9 @@ export class ProgramsService {
     if (!program) {
       throw new NotFoundException('Program not found or not assigned to you');
     }
+
+    // Only global exercises or the program coach's own can be added
+    await this.assertExercisesVisible([dto.exerciseId], program.coachId);
 
     const maxOrder = program.exercises.reduce(
       (max, e) => Math.max(max, e.order),

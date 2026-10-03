@@ -47,4 +47,9 @@ export class ProgramExercise {
 
   @Column({ type: 'boolean', nullable: true, default: null })
   made: boolean | null;
+
+  // Program exercises sharing the same value form one superset; null = not
+  // part of one.
+  @Column({ type: 'uuid', nullable: true })
+  supersetGroup: string | null;
 }
