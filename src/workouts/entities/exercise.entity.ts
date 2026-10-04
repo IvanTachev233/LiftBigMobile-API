@@ -2,12 +2,10 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToMany,
   ManyToOne,
   JoinColumn,
   Unique,
 } from 'typeorm';
-import { WorkoutSet } from './workout-set.entity';
 import { User } from '../../auth/user.entity';
 
 export enum BodyPart {
@@ -57,7 +55,4 @@ export class Exercise {
 
   @Column({ type: 'varchar', nullable: true })
   imageUrl: string | null;
-
-  @OneToMany(() => WorkoutSet, (set) => set.exercise)
-  sets: WorkoutSet[];
 }

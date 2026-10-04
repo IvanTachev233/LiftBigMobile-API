@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsEnum,
   IsNumber,
+  IsInt,
   IsNotEmpty,
   IsUUID,
   IsUrl,
@@ -13,6 +14,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkoutStatus } from '../entities/workout.entity';
 import { BodyPart } from '../entities/exercise.entity';
 
@@ -32,66 +34,101 @@ export class CreateWorkoutDto {
   isTemplate?: boolean;
 }
 
-// `{ exercise: { id } }` form of a set's exercise reference
-export class ExerciseRefInput {
-  @IsUUID()
-  id: string;
-}
-
-// Set shape sent by the workout logger
+// One set inside a card. `id` keeps an existing set of the same card.
 export class WorkoutSetInput {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Existing set id of the same card; omit for a new set',
+  })
   @IsOptional()
   @IsUUID()
-  exerciseId?: string;
+  id?: string;
 
-  // Used when exerciseId is absent; a malformed id gives a 400
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ExerciseRefInput)
-  exercise?: ExerciseRefInput;
+  @ApiProperty({ type: 'integer' })
+  @IsInt()
+  reps: number;
 
+  @ApiProperty()
   @IsNumber()
   weight: number;
 
-  @IsNumber()
-  reps: number;
-
+  @ApiPropertyOptional({
+    type: 'integer',
+    description: 'Set number inside the card; defaults to its position',
+  })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   order?: number;
 
+  @ApiPropertyOptional({ default: false })
   @IsOptional()
   @IsBoolean()
   isCompleted?: boolean;
+}
 
-  // Sets sharing the same value form one superset.
+// One exercise card. `id` keeps an existing card of the same workout.
+export class WorkoutExerciseInput {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Existing card id of this workout; omit for a new card',
+  })
   @IsOptional()
   @IsUUID()
-  supersetGroup?: string;
+  id?: string;
+
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  exerciseId: string;
+
+  @ApiProperty({ type: 'integer', description: 'Card position' })
+  @IsInt()
+  order: number;
+
+  // Cards sharing the same value form one superset.
+  @ApiPropertyOptional({ format: 'uuid', type: 'string', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  supersetGroup?: string | null;
+
+  @ApiProperty({ type: () => [WorkoutSetInput] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => WorkoutSetInput)
+  sets: WorkoutSetInput[];
 }
 
 export class UpdateWorkoutDto {
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   name?: string;
 
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   notes?: string;
 
+  @ApiPropertyOptional({ enum: ['PLANNED', 'IN_PROGRESS', 'COMPLETED'] })
   @IsOptional()
   @IsEnum(['PLANNED', 'IN_PROGRESS', 'COMPLETED'])
   status?: WorkoutStatus;
 
+  @ApiPropertyOptional({ format: 'date-time' })
   @IsOptional()
   @IsDateString()
   date?: string;
 
+  // When present, replaces all of the workout's cards; when absent, the
+  // cards are left as they are.
+  @ApiPropertyOptional({
+    type: () => [WorkoutExerciseInput],
+    description: 'Replaces all cards when present',
+  })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => WorkoutSetInput)
-  sets?: WorkoutSetInput[];
+  @Type(() => WorkoutExerciseInput)
+  exercises?: WorkoutExerciseInput[];
 }
 
 export class LogSetDto {

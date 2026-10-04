@@ -1,7 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { decimalTransformer } from '../../common/decimal.transformer';
-import { Workout } from './workout.entity';
-import { Exercise } from './exercise.entity';
+import { WorkoutExercise } from './workout-exercise.entity';
 
 export enum WeightMode {
   EXACT = 'EX',
@@ -14,17 +19,15 @@ export class WorkoutSet {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => Workout, (workout) => workout.sets, { onDelete: 'CASCADE' })
-  workout: Workout;
-
   @Column()
-  workoutId: string;
+  workoutExerciseId: string;
 
-  @ManyToOne(() => Exercise, (exercise) => exercise.sets)
-  exercise: Exercise;
-
-  @Column()
-  exerciseId: string;
+  @ManyToOne(() => WorkoutExercise, (workoutExercise) => workoutExercise.sets, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
+  @JoinColumn({ name: 'workoutExerciseId' })
+  workoutExercise: WorkoutExercise;
 
   @Column()
   reps: number;
@@ -55,10 +58,7 @@ export class WorkoutSet {
   @Column({ default: false })
   isCompleted: boolean;
 
+  // Set number inside its card.
   @Column()
   order: number;
-
-  // Sets sharing the same value form one superset; null = not part of one.
-  @Column({ type: 'uuid', nullable: true })
-  supersetGroup: string | null;
 }
