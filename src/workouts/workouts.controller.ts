@@ -11,9 +11,15 @@ import {
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { WorkoutsService } from './workouts.service';
-import { CreateWorkoutDto, UpdateWorkoutDto } from './dto/workout.dto';
+import {
+  CreateWorkoutDto,
+  UpdateWorkoutDto,
+  CreateExerciseDto,
+} from './dto/workout.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('workouts')
 @ApiBearerAuth()
@@ -31,8 +37,20 @@ export class WorkoutsController {
   }
 
   @Get('exercises')
-  findAllExercises() {
-    return this.workoutsService.findAllExercises();
+  @ApiOperation({ summary: 'List exercises visible to the caller' })
+  findAllExercises(@Request() req: AuthenticatedRequest) {
+    return this.workoutsService.findAllExercises(req.user);
+  }
+
+  @Post('exercises')
+  @UseGuards(RolesGuard)
+  @Roles('COACH')
+  @ApiOperation({ summary: 'Create a coach-owned exercise' })
+  createExercise(
+    @Body() dto: CreateExerciseDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.workoutsService.createExercise(dto, req.user);
   }
 
   @Get()

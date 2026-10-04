@@ -7,7 +7,7 @@ import {
 } from 'typeorm';
 import { decimalTransformer } from '../../common/decimal.transformer';
 import { User } from '../../auth/user.entity';
-import { WorkoutSet } from './workout-set.entity';
+import { WorkoutExercise } from './workout-exercise.entity';
 
 export enum WorkoutStatus {
   PLANNED = 'PLANNED',
@@ -48,6 +48,8 @@ export class Workout {
   })
   status: WorkoutStatus;
 
-  @OneToMany(() => WorkoutSet, (set) => set.workout, { cascade: true })
-  sets: WorkoutSet[];
+  @OneToMany(() => WorkoutExercise, (exercise) => exercise.workout, {
+    cascade: true,
+  })
+  exercises: WorkoutExercise[];
 }

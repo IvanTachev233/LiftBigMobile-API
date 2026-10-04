@@ -20,10 +20,14 @@ export class SeedOlympicExercises1709800000001 implements MigrationInterface {
     ];
 
     for (const ex of exercises) {
+      // Skips names that already exist as global exercises (a unique
+      // constraint can't dedupe rows with a null createdById)
       await queryRunner.query(
-        `INSERT INTO "exercise" ("id", "name", "bodyPart") 
-         VALUES (gen_random_uuid(), $1, $2)
-         ON CONFLICT ("name") DO NOTHING;`,
+        `INSERT INTO "exercise" ("id", "name", "bodyPart")
+         SELECT gen_random_uuid(), $1, $2
+         WHERE NOT EXISTS (
+           SELECT 1 FROM "exercise" WHERE "name" = $1 AND "createdById" IS NULL
+         );`,
         [ex.name, ex.bodyPart],
       );
     }

@@ -9,14 +9,15 @@ import {
   Param,
   UseGuards,
   Request,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { ProgramsService } from './programs.service';
 import {
   CreateProgramDto,
   UpdateProgramDto,
-  PatchProgramExerciseDto,
-  AddExerciseSetDto,
+  AddProgramSetDto,
+  PatchProgramSetDto,
 } from './dto/program.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -75,34 +76,30 @@ export class ProgramsController {
     return this.programsService.update(id, dto, req.user.id);
   }
 
-  @Post(':id/exercises')
+  @Post(':id/exercises/:cardId/sets')
   @UseGuards(RolesGuard)
   @Roles('CLIENT')
-  @ApiOperation({ summary: 'Client adds an extra set to a program' })
-  addExerciseSet(
-    @Param('id') programId: string,
-    @Body() dto: AddExerciseSetDto,
+  @ApiOperation({ summary: 'Client adds a set to a card of their program' })
+  addSet(
+    @Param('id', ParseUUIDPipe) programId: string,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+    @Body() dto: AddProgramSetDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.programsService.addExerciseSet(programId, dto, req.user.id);
+    return this.programsService.addSet(programId, cardId, dto, req.user.id);
   }
 
-  @Patch(':id/exercises/:exerciseId')
+  @Patch(':id/sets/:setId')
   @UseGuards(RolesGuard)
   @Roles('CLIENT')
-  @ApiOperation({ summary: 'Client logs exercise data' })
-  patchExercise(
-    @Param('id') programId: string,
-    @Param('exerciseId') exerciseId: string,
-    @Body() dto: PatchProgramExerciseDto,
+  @ApiOperation({ summary: 'Client logs a result on a set of their program' })
+  updateSet(
+    @Param('id', ParseUUIDPipe) programId: string,
+    @Param('setId', ParseUUIDPipe) setId: string,
+    @Body() dto: PatchProgramSetDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.programsService.patchExercise(
-      programId,
-      exerciseId,
-      dto,
-      req.user.id,
-    );
+    return this.programsService.updateSet(programId, setId, dto, req.user.id);
   }
 
   @Delete(':id')

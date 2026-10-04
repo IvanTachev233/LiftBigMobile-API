@@ -3,13 +3,16 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
-import { decimalTransformer } from '../../common/decimal.transformer';
 import { Program } from './program.entity';
 import { Exercise } from '../../workouts/entities/exercise.entity';
+import { ProgramSet } from './program-set.entity';
 
-@Entity()
+// One exercise card on a program; a program can hold several cards using the
+// same exercise.
+@Entity('program_exercise')
 export class ProgramExercise {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -17,34 +20,30 @@ export class ProgramExercise {
   @Column()
   programId: string;
 
-  @ManyToOne(() => Program, (p) => p.exercises, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Program, (p) => p.exercises, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
   @JoinColumn({ name: 'programId' })
   program: Program;
 
   @Column()
   exerciseId: string;
 
-  @ManyToOne(() => Exercise)
+  @ManyToOne(() => Exercise, { nullable: false })
   @JoinColumn({ name: 'exerciseId' })
   exercise: Exercise;
 
-  @Column()
-  reps: number;
-
-  @Column('decimal', {
-    precision: 6,
-    scale: 2,
-    nullable: true,
-    transformer: decimalTransformer,
-  })
-  weight: number | null;
-
-  @Column({ type: 'varchar', nullable: true })
-  notes: string | null;
-
+  // Position of this card among the program's cards.
   @Column()
   order: number;
 
-  @Column({ type: 'boolean', nullable: true, default: null })
-  made: boolean | null;
+  // Cards sharing the same value form one superset; null = not part of one.
+  @Column({ type: 'uuid', nullable: true })
+  supersetGroup: string | null;
+
+  @OneToMany(() => ProgramSet, (set) => set.programExercise, {
+    cascade: true,
+  })
+  sets: ProgramSet[];
 }
