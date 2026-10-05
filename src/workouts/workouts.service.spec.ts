@@ -3,17 +3,25 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import {
   ConflictException,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { FindOperator } from 'typeorm';
 import { plainToInstance } from 'class-transformer';
 import { WorkoutsService } from './workouts.service';
-import { UpdateWorkoutDto } from './dto/workout.dto';
+import {
+  CreateWorkoutDto,
+  UpdateWorkoutDto,
+  WorkoutExerciseInput,
+} from './dto/workout.dto';
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { Exercise } from './entities/exercise.entity';
-import { WorkoutExercise } from './entities/workout-exercise.entity';
-import { WorkoutSet } from './entities/workout-set.entity';
 import { AuthUser } from '../auth/auth-user.interface';
+import {
+  createFakeWorkoutDb,
+  FakeWorkoutDb,
+  workoutFixture,
+} from '../../test/fake-workout-db';
 
 type Where = Record<string, unknown>;
 
@@ -90,9 +98,22 @@ const makeExercise = (overrides: Partial<Exercise>): Exercise =>
     ...overrides,
   }) as unknown as Exercise;
 
+const user = (
+  id: string,
+  role: 'COACH' | 'CLIENT',
+  coachId: string | null = null,
+): AuthUser => ({
+  id,
+  email: `${id}@example.com`,
+  name: `${id} name`,
+  role,
+  coachId,
+});
+
 describe('WorkoutsService', () => {
   let service: WorkoutsService;
   let exercises: Exercise[];
+  let fake: FakeWorkoutDb;
 
   const exerciseRepo = {
     find: jest.fn((opts: { where: Where | Where[] }) =>
@@ -110,99 +131,10 @@ describe('WorkoutsService', () => {
     save: jest.fn((e: Exercise) => Promise.resolve(e)),
   };
 
-  // One stored workout standing in for the workout / workout_exercise /
-  // workout_set tables. Reads return copies with `exercise` joined, in
-  // storage order (not sorted), so sorting must come from the service.
-  type StoredSet = Partial<WorkoutSet>;
-  type StoredCard = Omit<Partial<WorkoutExercise>, 'sets'> & {
-    sets: StoredSet[];
-  };
-  let stored: Omit<Partial<Workout>, 'exercises'> & { exercises: StoredCard[] };
-  let generatedIds: number;
-
-  const loadWorkout = (): Workout =>
-    ({
-      ...stored,
-      exercises: stored.exercises.map((c) => ({
-        ...c,
-        exercise: exercises.find((e) => e.id === c.exerciseId),
-        sets: c.sets.map((set) => ({ ...set })),
-      })),
-    }) as unknown as Workout;
-
-  const workoutRepo = {
-    findOne: jest.fn((opts: { where: Where }) =>
-      Promise.resolve(
-        opts.where.id === stored.id && opts.where.userId === stored.userId
-          ? loadWorkout()
-          : null,
-      ),
-    ),
-    find: jest.fn<Promise<Workout[]>, [unknown]>(() =>
-      Promise.resolve([loadWorkout()]),
-    ),
-    create: jest.fn((data: Partial<Workout>) => ({ ...data }) as Workout),
-    save: jest.fn((w: Workout) => Promise.resolve({ ...w, id: 'new-workout' })),
-    manager: {
-      transaction: jest.fn((cb: (m: unknown) => Promise<unknown>) =>
-        cb(manager),
-      ),
-    },
-  };
-
-  const manager = {
-    delete: jest.fn((_target: unknown, where: Where) => {
-      if (where.workoutId === stored.id) stored.exercises = [];
-      return Promise.resolve({ affected: 1 });
-    }),
-    create: jest.fn((_target: unknown, data: unknown) => data),
-    save: jest.fn((_target: unknown, cards: StoredCard[]) => {
-      for (const c of cards) {
-        c.id ??= `gen-card-${++generatedIds}`;
-        for (const set of c.sets) {
-          set.id ??= `gen-set-${++generatedIds}`;
-          set.workoutExerciseId = c.id;
-        }
-        stored.exercises.push(c);
-      }
-      return Promise.resolve(cards);
-    }),
-    update: jest.fn(
-      (_target: unknown, where: Where, patch: Partial<Workout>) => {
-        if (where.id === stored.id) Object.assign(stored, patch);
-        return Promise.resolve({ affected: 1 });
-      },
-    ),
-  };
-
-  const coach1: AuthUser = {
-    id: 'coach-1',
-    email: 'coach1@example.com',
-    name: null,
-    role: 'COACH',
-    coachId: null,
-  };
-  const coach2: AuthUser = {
-    id: 'coach-2',
-    email: 'coach2@example.com',
-    name: null,
-    role: 'COACH',
-    coachId: null,
-  };
-  const clientOfCoach1: AuthUser = {
-    id: 'client-1',
-    email: 'client1@example.com',
-    name: null,
-    role: 'CLIENT',
-    coachId: 'coach-1',
-  };
-  const clientNoCoach: AuthUser = {
-    id: 'client-2',
-    email: 'client2@example.com',
-    name: null,
-    role: 'CLIENT',
-    coachId: null,
-  };
+  const coach1 = user('coach-1', 'COACH');
+  const coach2 = user('coach-2', 'COACH');
+  const clientOfCoach1 = user('client-1', 'CLIENT', 'coach-1');
+  const clientNoCoach = user('client-2', 'CLIENT');
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -219,66 +151,40 @@ describe('WorkoutsService', () => {
         createdById: 'coach-2',
       }),
     ];
-    generatedIds = 0;
-    // Cards and sets stored out of order on purpose.
-    stored = {
-      id: 'workout-1',
-      userId: 'coach-1',
-      name: 'Push',
-      totalWeightLifted: 0,
-      exercises: [
-        {
-          id: 'card-b',
-          workoutId: 'workout-1',
-          exerciseId: 'coach1-ex',
-          order: 2,
-          supersetGroup: null,
-          sets: [
-            {
-              id: 'set-b2',
-              workoutExerciseId: 'card-b',
-              reps: 8,
-              weight: 20,
-              order: 2,
-            },
-            {
-              id: 'set-b1',
-              workoutExerciseId: 'card-b',
-              reps: 8,
-              weight: 10,
-              order: 1,
-            },
-          ],
-        },
-        {
-          id: 'card-a',
-          workoutId: 'workout-1',
-          exerciseId: 'global-1',
-          order: 1,
-          supersetGroup: null,
-          sets: [
-            {
-              id: 'set-a1',
-              workoutExerciseId: 'card-a',
-              reps: 5,
-              weight: 100,
-              order: 1,
-            },
-          ],
-        },
-      ],
-    };
+    // workout-1: coach-1's own workout. assigned-1: assigned to client-1 by
+    // coach-1. other-1: client-2's own workout.
+    const own = workoutFixture({ id: 'workout-1', userId: 'coach-1' });
+    const assigned = workoutFixture({
+      id: 'assigned-1',
+      userId: 'client-1',
+      assignedById: 'coach-1',
+    });
+    const other = workoutFixture({ id: 'other-1', userId: 'client-2' });
+    fake = createFakeWorkoutDb(
+      {
+        workouts: [...own.workouts, ...assigned.workouts, ...other.workouts],
+        cards: [...own.cards, ...assigned.cards, ...other.cards],
+        sets: [...own.sets, ...assigned.sets, ...other.sets],
+        users: [coach1, coach2, clientOfCoach1, clientNoCoach].map((u) => ({
+          ...u,
+        })),
+        exercises,
+      },
+      exerciseRepo,
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorkoutsService,
-        { provide: getRepositoryToken(Workout), useValue: workoutRepo },
+        { provide: getRepositoryToken(Workout), useValue: fake.workoutRepo },
         { provide: getRepositoryToken(Exercise), useValue: exerciseRepo },
       ],
     }).compile();
 
     service = module.get<WorkoutsService>(WorkoutsService);
   });
+
+  const noWrites = () => expect(fake.writes).toEqual([]);
 
   it('should be defined', () => {
     expect(service).toBeDefined();
@@ -386,14 +292,29 @@ describe('WorkoutsService', () => {
       sets: c.sets.map((set) => set.id),
     }));
 
+  // The row lock must be the transaction's first read, on the bare row.
+  const expectLockedFirst = (where: Where) => {
+    expect(fake.reads[0]).toEqual({
+      entity: 'Workout',
+      where,
+      lock: { mode: 'pessimistic_write' },
+      relations: undefined,
+    });
+  };
+
   describe('reads return cards sorted by order, then sets by order', () => {
     const expected = [
-      { id: 'card-a', exerciseId: 'global-1', order: 1, sets: ['set-a1'] },
       {
-        id: 'card-b',
+        id: 'workout-1-card-a',
+        exerciseId: 'global-1',
+        order: 1,
+        sets: ['workout-1-set-a1'],
+      },
+      {
+        id: 'workout-1-card-b',
         exerciseId: 'coach1-ex',
         order: 2,
-        sets: ['set-b1', 'set-b2'],
+        sets: ['workout-1-set-b1', 'workout-1-set-b2'],
       },
     ];
 
@@ -415,11 +336,17 @@ describe('WorkoutsService', () => {
     });
 
     it.each(['findAll', 'findUpcoming'] as const)(
-      '%s loads cards with their exercise and sets',
+      '%s loads cards with their exercise and sets, and the assigning coach',
       async (method) => {
         await service[method](coach1);
-        expect(workoutRepo.find.mock.calls[0][0]).toMatchObject({
-          relations: ['exercises', 'exercises.exercise', 'exercises.sets'],
+        expect(fake.workoutRepo.find.mock.calls[0][0]).toMatchObject({
+          where: { userId: 'coach-1' },
+          relations: [
+            'exercises',
+            'exercises.exercise',
+            'exercises.sets',
+            'assignedBy',
+          ],
         });
       },
     );
@@ -428,21 +355,73 @@ describe('WorkoutsService', () => {
       await expect(service.findOne('workout-1', coach2)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+      await expect(
+        service.findOne('assigned-1', clientNoCoach),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('assigned workouts in the client reads', () => {
+    it('lists own and assigned workouts, exposing only id and name of the coach', async () => {
+      fake.db.workouts.push({
+        ...workoutFixture({ id: 'self-2', userId: 'client-1' }).workouts[0],
+      });
+      const workouts = await service.findAll(clientOfCoach1);
+      expect(workouts.map((w) => w.id).sort()).toEqual([
+        'assigned-1',
+        'self-2',
+      ]);
+      const assigned = workouts.find((w) => w.id === 'assigned-1');
+      expect(assigned?.assignedById).toBe('coach-1');
+      expect(assigned?.assignedBy).toEqual({
+        id: 'coach-1',
+        name: 'coach-1 name',
+      });
+      expect(workouts.find((w) => w.id === 'self-2')?.assignedBy).toBeNull();
+    });
+
+    it('findOne returns the trimmed coach on an assigned workout', async () => {
+      const workout = await service.findOne('assigned-1', clientOfCoach1);
+      expect(workout.assignedBy).toEqual({
+        id: 'coach-1',
+        name: 'coach-1 name',
+      });
+    });
+
+    it('findUpcoming keeps future, not completed workouts', async () => {
+      fake.workout('assigned-1')!.status = WorkoutStatus.COMPLETED;
+      await expect(service.findUpcoming(clientOfCoach1)).resolves.toEqual([]);
     });
   });
 
   describe('create', () => {
-    it('returns the new workout with an empty card list', async () => {
+    it('returns the new self-made workout with an empty card list', async () => {
       const result = await service.create(
         { name: 'New', date: '2026-10-03' },
         coach1,
       );
-      expect(result).toMatchObject({ name: 'New', userId: 'coach-1' });
+      expect(result).toMatchObject({
+        name: 'New',
+        userId: 'coach-1',
+        assignedById: null,
+        assignedBy: null,
+        status: WorkoutStatus.PLANNED,
+      });
       expect(result.exercises).toEqual([]);
+    });
+
+    it('never takes assignedById from the body', async () => {
+      const dto = {
+        name: 'Sneaky',
+        date: '2026-10-03',
+        assignedById: 'coach-1',
+      } as CreateWorkoutDto;
+      const result = await service.create(dto, clientOfCoach1);
+      expect(result.assignedById).toBeNull();
     });
   });
 
-  describe('update — cards', () => {
+  describe('update — cards in place', () => {
     it('stores 2 cards using the same exercise, each with its own sets, in order', async () => {
       await service.update(
         'workout-1',
@@ -506,7 +485,7 @@ describe('WorkoutsService', () => {
       expect(result.exercises[0].exercise.name).toBe('Bench Press');
     });
 
-    it('numbers sets without an order by their position in the card', async () => {
+    it('numbers new sets without an order by their position and leaves them unlogged', async () => {
       await service.update(
         'workout-1',
         {
@@ -516,21 +495,110 @@ describe('WorkoutsService', () => {
               order: 1,
               sets: [
                 { reps: 1, weight: 1 },
-                { reps: 2, weight: 2 },
+                { reps: 2, weight: null },
               ],
             },
           ],
         },
         coach1,
       );
-      expect(stored.exercises[0].sets.map((set) => set.order)).toEqual([1, 2]);
-      expect(stored.exercises[0].sets.map((set) => set.isCompleted)).toEqual([
-        false,
-        false,
+      const [card] = fake.cardsOf('workout-1');
+      const sets = fake.db.sets.filter((s) => s.workoutExerciseId === card.id);
+      expect(
+        sets.map((s) => [s.order, s.weight, s.made, s.actualReps]),
+      ).toEqual([
+        [1, 1, null, null],
+        [2, null, null, null],
       ]);
     });
 
-    it('replaces every card and recomputes totalWeightLifted over all sets', async () => {
+    it('updates kept cards and sets by id, keeping results the body leaves out', async () => {
+      await service.update(
+        'workout-1',
+        {
+          exercises: [
+            {
+              id: 'workout-1-card-b',
+              exerciseId: 'global-1',
+              order: 1,
+              sets: [{ id: 'workout-1-set-b1', reps: 9, weight: 11, order: 1 }],
+            },
+          ],
+        },
+        coach1,
+      );
+      expect(fake.set('workout-1-set-b1')).toMatchObject({
+        workoutExerciseId: 'workout-1-card-b',
+        reps: 9,
+        weight: 11,
+        made: true,
+        actualReps: 6,
+        actualWeight: 12.5,
+        notes: 'slow',
+      });
+      expect(fake.cardsOf('workout-1')).toEqual([
+        expect.objectContaining({
+          id: 'workout-1-card-b',
+          exerciseId: 'global-1',
+          order: 1,
+        }),
+      ]);
+      // Rows left out are deleted
+      expect(fake.set('workout-1-set-b2')).toBeUndefined();
+      expect(fake.set('workout-1-set-a1')).toBeUndefined();
+    });
+
+    it('writes the results the body sends, the tick included', async () => {
+      await service.update(
+        'workout-1',
+        {
+          exercises: [
+            {
+              id: 'workout-1-card-a',
+              exerciseId: 'global-1',
+              order: 1,
+              sets: [
+                {
+                  id: 'workout-1-set-a1',
+                  reps: 5,
+                  weight: 100,
+                  made: true,
+                },
+                { reps: 5, weight: 100, made: false, actualReps: 2 },
+              ],
+            },
+            {
+              id: 'workout-1-card-b',
+              exerciseId: 'coach1-ex',
+              order: 2,
+              sets: [
+                {
+                  id: 'workout-1-set-b1',
+                  reps: 8,
+                  weight: 10,
+                  made: null,
+                  actualReps: null,
+                  actualWeight: null,
+                },
+              ],
+            },
+          ],
+        },
+        coach1,
+      );
+      expect(fake.set('workout-1-set-a1')?.made).toBe(true);
+      const newSet = fake.db.sets.find(
+        (s) => s.workoutExerciseId === 'workout-1-card-a' && s.order === 2,
+      );
+      expect(newSet).toMatchObject({ made: false, actualReps: 2 });
+      expect(fake.set('workout-1-set-b1')).toMatchObject({
+        made: null,
+        actualReps: null,
+        actualWeight: null,
+      });
+    });
+
+    it('recomputes totalWeightLifted over made sets, actual ?? planned', async () => {
       const result = await service.update(
         'workout-1',
         {
@@ -539,29 +607,30 @@ describe('WorkoutsService', () => {
               exerciseId: 'global-1',
               order: 1,
               sets: [
-                { reps: 5, weight: 100 },
+                { reps: 5, weight: 100, made: true },
+                { reps: 3, weight: 110, made: true, actualReps: 2 },
+                { reps: 3, weight: 110, made: false },
                 { reps: 3, weight: 110 },
               ],
             },
             {
               exerciseId: 'coach1-ex',
               order: 2,
-              sets: [{ reps: 10, weight: 22.5 }],
+              sets: [
+                { reps: 10, weight: 22.5, made: true, actualWeight: 25 },
+                { reps: 10, weight: null, made: true },
+              ],
             },
           ],
         },
         coach1,
       );
-      expect(manager.delete).toHaveBeenCalledWith(WorkoutExercise, {
-        workoutId: 'workout-1',
-      });
-      // 5*100 + 3*110 + 10*22.5
-      expect(result.totalWeightLifted).toBe(1055);
-      expect(stored.exercises.map((c) => c.id)).not.toContain('card-a');
+      // 5*100 + 2*110 + 10*25 + 0
+      expect(result.totalWeightLifted).toBe(970);
     });
 
     it('clears all cards and the total for an empty exercises list', async () => {
-      stored.totalWeightLifted = 500;
+      fake.workout('workout-1')!.totalWeightLifted = 500;
       const result = await service.update(
         'workout-1',
         { exercises: [] },
@@ -569,6 +638,9 @@ describe('WorkoutsService', () => {
       );
       expect(result.exercises).toEqual([]);
       expect(result.totalWeightLifted).toBe(0);
+      expect(
+        fake.db.sets.some((s) => String(s.id).startsWith('workout-1')),
+      ).toBe(false);
     });
 
     it('keeps the cards on a name/date/status-only update', async () => {
@@ -581,13 +653,12 @@ describe('WorkoutsService', () => {
         },
         coach1,
       );
-      expect(manager.delete).not.toHaveBeenCalled();
-      expect(manager.save).not.toHaveBeenCalled();
+      expect(fake.writes.filter((w) => w.entity !== 'Workout')).toEqual([]);
       expect(result.name).toBe('Renamed');
       expect(result.status).toBe(WorkoutStatus.COMPLETED);
       expect(cardSummary(result).map((c) => c.id)).toEqual([
-        'card-a',
-        'card-b',
+        'workout-1-card-a',
+        'workout-1-card-b',
       ]);
       expect(result.exercises[1].sets).toHaveLength(2);
     });
@@ -595,173 +666,150 @@ describe('WorkoutsService', () => {
     it('updates only the fields sent, given a transformed DTO instance', async () => {
       const dto = plainToInstance(UpdateWorkoutDto, { name: 'Renamed' });
       await service.update('workout-1', dto, coach1);
-      expect(manager.update).toHaveBeenCalledTimes(1);
-      expect(Object.keys(manager.update.mock.calls[0][2])).toEqual(['name']);
-      expect(stored.exercises).toHaveLength(2);
+      expect(fake.writes).toEqual([
+        {
+          op: 'update',
+          entity: 'Workout',
+          criteria: { id: 'workout-1' },
+          values: { name: 'Renamed' },
+        },
+      ]);
     });
 
-    it('runs the card replacement inside one transaction', async () => {
+    it('runs every write in one transaction after locking the bare workout row', async () => {
       await service.update(
         'workout-1',
         { exercises: [{ exerciseId: 'global-1', order: 1, sets: [] }] },
         coach1,
       );
-      expect(workoutRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(fake.manager.transaction).toHaveBeenCalledTimes(1);
+      expectLockedFirst({ id: 'workout-1', userId: 'coach-1' });
     });
 
     it("404s on another user's workout without touching it", async () => {
       await expect(
         service.update('workout-1', { exercises: [] }, coach2),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(manager.delete).not.toHaveBeenCalled();
+      noWrites();
     });
   });
 
   describe('update — card and set ids', () => {
-    it('keeps own card and set ids', async () => {
-      await service.update(
-        'workout-1',
+    const attempt = (cards: WorkoutExerciseInput[]) =>
+      service.update('workout-1', { exercises: cards }, coach1);
+
+    it('keeps own card and set ids and creates rows without one', async () => {
+      await attempt([
         {
-          exercises: [
-            {
-              id: 'card-b',
-              exerciseId: 'coach1-ex',
-              order: 1,
-              sets: [
-                { id: 'set-b1', reps: 8, weight: 12, order: 1 },
-                { reps: 8, weight: 14, order: 2 },
-              ],
-            },
+          id: 'workout-1-card-b',
+          exerciseId: 'coach1-ex',
+          order: 1,
+          sets: [
+            { id: 'workout-1-set-b1', reps: 8, weight: 12, order: 1 },
+            { reps: 8, weight: 14, order: 2 },
           ],
         },
-        coach1,
-      );
+      ]);
       const reloaded = await service.findOne('workout-1', coach1);
       expect(cardSummary(reloaded)).toEqual([
         {
-          id: 'card-b',
+          id: 'workout-1-card-b',
           exerciseId: 'coach1-ex',
           order: 1,
-          sets: ['set-b1', 'gen-set-1'],
+          sets: ['workout-1-set-b1', expect.stringMatching(/^gen-WorkoutSet/)],
         },
       ]);
       expect(reloaded.exercises[0].sets[0].weight).toBe(12);
     });
 
-    it('rejects a card id from another workout and changes nothing', async () => {
-      await expect(
-        service.update(
-          'workout-1',
+    it.each([
+      [
+        'a card id from another workout',
+        [{ id: 'other-1-card-a', exerciseId: 'global-1', order: 1, sets: [] }],
+      ],
+      [
+        'a set id from another workout',
+        [
           {
-            exercises: [
-              {
-                id: 'card-of-other-workout',
-                exerciseId: 'global-1',
-                order: 1,
-                sets: [],
-              },
+            id: 'workout-1-card-a',
+            exerciseId: 'global-1',
+            order: 1,
+            sets: [{ id: 'other-1-set-a1', reps: 5, weight: 100 }],
+          },
+        ],
+      ],
+      [
+        'a set id that belongs to a different card of this workout',
+        [
+          {
+            id: 'workout-1-card-a',
+            exerciseId: 'global-1',
+            order: 1,
+            sets: [{ id: 'workout-1-set-b1', reps: 5, weight: 100 }],
+          },
+        ],
+      ],
+      [
+        'an own set id placed on a new card (no id)',
+        [
+          {
+            exerciseId: 'global-1',
+            order: 1,
+            sets: [{ id: 'workout-1-set-a1', reps: 5, weight: 100 }],
+          },
+        ],
+      ],
+      [
+        'an id that exists nowhere',
+        [
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            exerciseId: 'global-1',
+            order: 1,
+            sets: [],
+          },
+        ],
+      ],
+      [
+        'the same card id used twice',
+        [
+          {
+            id: 'workout-1-card-a',
+            exerciseId: 'global-1',
+            order: 1,
+            sets: [],
+          },
+          {
+            id: 'workout-1-card-a',
+            exerciseId: 'global-1',
+            order: 2,
+            sets: [],
+          },
+        ],
+      ],
+      [
+        'the same set id used twice',
+        [
+          {
+            id: 'workout-1-card-b',
+            exerciseId: 'coach1-ex',
+            order: 1,
+            sets: [
+              { id: 'workout-1-set-b1', reps: 5, weight: 100 },
+              { id: 'workout-1-set-b1', reps: 5, weight: 100 },
             ],
           },
-          coach1,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(manager.delete).not.toHaveBeenCalled();
-      expect(manager.save).not.toHaveBeenCalled();
-    });
-
-    it('rejects a set id from another workout', async () => {
-      await expect(
-        service.update(
-          'workout-1',
-          {
-            exercises: [
-              {
-                id: 'card-a',
-                exerciseId: 'global-1',
-                order: 1,
-                sets: [{ id: 'set-of-other-workout', reps: 5, weight: 100 }],
-              },
-            ],
-          },
-          coach1,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(manager.delete).not.toHaveBeenCalled();
-    });
-
-    it('rejects a set id that belongs to a different card of this workout', async () => {
-      await expect(
-        service.update(
-          'workout-1',
-          {
-            exercises: [
-              {
-                id: 'card-a',
-                exerciseId: 'global-1',
-                order: 1,
-                sets: [{ id: 'set-b1', reps: 5, weight: 100 }],
-              },
-            ],
-          },
-          coach1,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('rejects an own set id placed on a new card (no id)', async () => {
-      await expect(
-        service.update(
-          'workout-1',
-          {
-            exercises: [
-              {
-                exerciseId: 'global-1',
-                order: 1,
-                sets: [{ id: 'set-a1', reps: 5, weight: 100 }],
-              },
-            ],
-          },
-          coach1,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('rejects the same card id used twice', async () => {
-      await expect(
-        service.update(
-          'workout-1',
-          {
-            exercises: [
-              { id: 'card-a', exerciseId: 'global-1', order: 1, sets: [] },
-              { id: 'card-a', exerciseId: 'global-1', order: 2, sets: [] },
-            ],
-          },
-          coach1,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('rejects the same set id used twice', async () => {
-      await expect(
-        service.update(
-          'workout-1',
-          {
-            exercises: [
-              {
-                id: 'card-b',
-                exerciseId: 'coach1-ex',
-                order: 1,
-                sets: [
-                  { id: 'set-b1', reps: 5, weight: 100 },
-                  { id: 'set-b1', reps: 5, weight: 100 },
-                ],
-              },
-            ],
-          },
-          coach1,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
+        ],
+      ],
+    ] as [string, WorkoutExerciseInput[]][])(
+      'rejects %s and changes nothing',
+      async (_label, cards) => {
+        await expect(attempt(cards)).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        noWrites();
+      },
+    );
   });
 
   describe('update — exerciseId visibility and supersetGroup', () => {
@@ -782,8 +830,7 @@ describe('WorkoutsService', () => {
           coach1,
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(manager.delete).not.toHaveBeenCalled();
-      expect(manager.save).not.toHaveBeenCalled();
+      noWrites();
     });
 
     it('accepts a global or own exerciseId', async () => {
@@ -806,7 +853,7 @@ describe('WorkoutsService', () => {
     });
 
     it("lets a client use their coach's exercise but not another coach's", async () => {
-      stored.userId = 'client-1';
+      fake.workout('workout-1')!.userId = 'client-1';
       await expect(
         service.update(
           'workout-1',
@@ -854,6 +901,244 @@ describe('WorkoutsService', () => {
         'group-1',
         null,
       ]);
+    });
+  });
+
+  describe('assigned workouts — client writes', () => {
+    it('lets the client change only the status', async () => {
+      const result = await service.update(
+        'assigned-1',
+        plainToInstance(UpdateWorkoutDto, { status: 'COMPLETED' }),
+        clientOfCoach1,
+      );
+      expect(result.status).toBe(WorkoutStatus.COMPLETED);
+      expect(fake.writes).toEqual([
+        {
+          op: 'update',
+          entity: 'Workout',
+          criteria: { id: 'assigned-1' },
+          values: { status: 'COMPLETED' },
+        },
+      ]);
+    });
+
+    it.each([
+      ['name', { name: 'Mine now' }],
+      ['date', { date: '2030-02-02' }],
+      ['notes', { notes: 'x' }],
+      ['exercises', { exercises: [] }],
+      ['status plus name', { status: 'COMPLETED', name: 'x' }],
+    ])('403s on a %s change and writes nothing', async (_label, body) => {
+      await expect(
+        service.update(
+          'assigned-1',
+          plainToInstance(UpdateWorkoutDto, body),
+          clientOfCoach1,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      noWrites();
+      expect(fake.cardsOf('assigned-1')).toHaveLength(2);
+    });
+
+    it('403s on DELETE of an assigned workout and keeps it', async () => {
+      await expect(
+        service.remove('assigned-1', clientOfCoach1),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(fake.workout('assigned-1')).toBeDefined();
+      noWrites();
+    });
+
+    it("404s on another client's assigned workout", async () => {
+      await expect(
+        service.update(
+          'assigned-1',
+          plainToInstance(UpdateWorkoutDto, { status: 'COMPLETED' }),
+          clientNoCoach,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.remove('assigned-1', clientNoCoach),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      noWrites();
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes an own self-made workout with its cards and sets, under the row lock', async () => {
+      await service.remove('workout-1', coach1);
+      expect(fake.workout('workout-1')).toBeUndefined();
+      expect(fake.cardsOf('workout-1')).toEqual([]);
+      expectLockedFirst({ id: 'workout-1', userId: 'coach-1' });
+    });
+
+    it("404s on another user's workout", async () => {
+      await expect(service.remove('workout-1', coach2)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(fake.workout('workout-1')).toBeDefined();
+    });
+  });
+
+  describe('addSet', () => {
+    it("appends a set after the card's last set on an assigned workout", async () => {
+      const set = await service.addSet(
+        'assigned-1',
+        'assigned-1-card-b',
+        { reps: 4, weight: 30 },
+        clientOfCoach1,
+      );
+      expect(set).toMatchObject({
+        workoutExerciseId: 'assigned-1-card-b',
+        reps: 4,
+        weight: 30,
+        order: 3,
+        made: null,
+        actualReps: null,
+        actualWeight: null,
+        notes: null,
+      });
+      expect(fake.workout('assigned-1')?.status).toBe(WorkoutStatus.PLANNED);
+      expectLockedFirst({ id: 'assigned-1', userId: 'client-1' });
+    });
+
+    it('works on a self-made workout and defaults weight to null', async () => {
+      const set = await service.addSet(
+        'workout-1',
+        'workout-1-card-a',
+        { reps: 4 },
+        coach1,
+      );
+      expect(set).toMatchObject({ order: 2, weight: null });
+    });
+
+    it('starts a planned workout and counts a set added as made', async () => {
+      await service.addSet(
+        'assigned-1',
+        'assigned-1-card-a',
+        { reps: 5, weight: 40, made: true, actualReps: 4 },
+        clientOfCoach1,
+      );
+      const workout = fake.workout('assigned-1');
+      expect(workout?.status).toBe(WorkoutStatus.IN_PROGRESS);
+      // set-b1 (6 × 12.5) + the new set (4 × 40)
+      expect(workout?.totalWeightLifted).toBe(235);
+    });
+
+    it("404s on another client's workout and writes nothing", async () => {
+      await expect(
+        service.addSet(
+          'assigned-1',
+          'assigned-1-card-a',
+          { reps: 5 },
+          clientNoCoach,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      noWrites();
+    });
+
+    it('404s on a card that is not on the workout', async () => {
+      await expect(
+        service.addSet(
+          'assigned-1',
+          'other-1-card-a',
+          { reps: 5 },
+          clientOfCoach1,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      noWrites();
+    });
+  });
+
+  describe('updateSetResult', () => {
+    it('writes only the result columns and starts a planned workout', async () => {
+      const set = await service.updateSetResult(
+        'assigned-1',
+        'assigned-1-set-a1',
+        { actualReps: 3, actualWeight: 105, made: true },
+        clientOfCoach1,
+      );
+      expect(set).toMatchObject({
+        reps: 5,
+        weight: 100,
+        made: true,
+        actualReps: 3,
+        actualWeight: 105,
+      });
+      const setWrites = fake.writes.filter((w) => w.entity === 'WorkoutSet');
+      expect(setWrites).toEqual([
+        {
+          op: 'update',
+          entity: 'WorkoutSet',
+          criteria: { id: 'assigned-1-set-a1' },
+          values: { made: true, actualReps: 3, actualWeight: 105 },
+        },
+      ]);
+      const workout = fake.workout('assigned-1');
+      expect(workout?.status).toBe(WorkoutStatus.IN_PROGRESS);
+      // 3 × 105 + set-b1 (6 × 12.5)
+      expect(workout?.totalWeightLifted).toBe(390);
+      expectLockedFirst({ id: 'assigned-1', userId: 'client-1' });
+    });
+
+    it('clears a result sent as null and leaves other fields alone', async () => {
+      await service.updateSetResult(
+        'assigned-1',
+        'assigned-1-set-b1',
+        { made: null },
+        clientOfCoach1,
+      );
+      expect(fake.set('assigned-1-set-b1')).toMatchObject({
+        made: null,
+        actualReps: 6,
+        actualWeight: 12.5,
+      });
+      expect(fake.workout('assigned-1')?.totalWeightLifted).toBe(0);
+    });
+
+    it('leaves a planned workout planned when the body logs nothing', async () => {
+      await service.updateSetResult(
+        'assigned-1',
+        'assigned-1-set-a1',
+        {},
+        clientOfCoach1,
+      );
+      expect(fake.workout('assigned-1')?.status).toBe(WorkoutStatus.PLANNED);
+      expect(fake.writes.filter((w) => w.entity === 'WorkoutSet')).toEqual([]);
+    });
+
+    it('leaves a completed workout completed', async () => {
+      fake.workout('assigned-1')!.status = WorkoutStatus.COMPLETED;
+      await service.updateSetResult(
+        'assigned-1',
+        'assigned-1-set-a1',
+        { made: false },
+        clientOfCoach1,
+      );
+      expect(fake.workout('assigned-1')?.status).toBe(WorkoutStatus.COMPLETED);
+    });
+
+    it("404s on another client's workout", async () => {
+      await expect(
+        service.updateSetResult(
+          'assigned-1',
+          'assigned-1-set-a1',
+          { made: true },
+          clientNoCoach,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      noWrites();
+    });
+
+    it('404s on a set that is not on the workout', async () => {
+      await expect(
+        service.updateSetResult(
+          'assigned-1',
+          'other-1-set-a1',
+          { made: true },
+          clientOfCoach1,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      noWrites();
     });
   });
 });

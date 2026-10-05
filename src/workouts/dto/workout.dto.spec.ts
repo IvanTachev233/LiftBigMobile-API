@@ -1,7 +1,10 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import {
+  AddSetDto,
   CreateExerciseDto,
+  CreateWorkoutDto,
+  SetResultDto,
   UpdateWorkoutDto,
   WorkoutExerciseInput,
   WorkoutSetInput,
@@ -91,7 +94,15 @@ describe('UpdateWorkoutDto exercises (cards)', () => {
           id: CARD_ID,
           supersetGroup: GROUP_ID,
           sets: [
-            { id: SET_ID, reps: 5, weight: 100, order: 1, isCompleted: true },
+            {
+              id: SET_ID,
+              reps: 5,
+              weight: 100,
+              order: 1,
+              made: true,
+              actualReps: 4,
+              actualWeight: 102.5,
+            },
           ],
         }),
       ],
@@ -110,8 +121,41 @@ describe('UpdateWorkoutDto exercises (cards)', () => {
       reps: 5,
       weight: 100,
       order: 1,
-      isCompleted: true,
+      made: true,
+      actualReps: 4,
+      actualWeight: 102.5,
     });
+  });
+
+  it('accepts a null weight and null results on a set', async () => {
+    const dto = plainToInstance(UpdateWorkoutDto, {
+      exercises: [
+        card({
+          sets: [
+            {
+              reps: 5,
+              weight: null,
+              made: null,
+              actualReps: null,
+              actualWeight: null,
+            },
+          ],
+        }),
+      ],
+    });
+    expect(await validate(dto, strict)).toHaveLength(0);
+  });
+
+  it('no longer whitelists isCompleted on a set', async () => {
+    const dto = plainToInstance(UpdateWorkoutDto, {
+      exercises: [
+        card({ sets: [{ reps: 5, weight: 100, isCompleted: true }] }),
+      ],
+    });
+    const errors = await validate(dto, strict);
+    const setErrors =
+      errors[0]?.children?.[0]?.children?.[0]?.children?.[0]?.children ?? [];
+    expect(setErrors.map((e) => e.property)).toContain('isCompleted');
   });
 
   it('accepts a null supersetGroup and an omitted one', async () => {
@@ -161,7 +205,9 @@ describe('UpdateWorkoutDto exercises (cards)', () => {
     ['reps', { reps: 2.5, weight: 100 }],
     ['weight', { reps: 5 }],
     ['order', { reps: 5, weight: 100, order: 'x' }],
-    ['isCompleted', { reps: 5, weight: 100, isCompleted: 'yes' }],
+    ['made', { reps: 5, weight: 100, made: 'yes' }],
+    ['actualReps', { reps: 5, weight: 100, actualReps: 2.5 }],
+    ['actualWeight', { reps: 5, weight: 100, actualWeight: 'heavy' }],
   ])('rejects a set with a bad %s', async (property, set) => {
     const dto = plainToInstance(UpdateWorkoutDto, {
       exercises: [card({ sets: [set] })],
@@ -191,5 +237,123 @@ describe('UpdateWorkoutDto exercises (cards)', () => {
     const cardErrors = (await validate(cardDto, strict))[0]?.children?.[0]
       ?.children;
     expect(cardErrors?.map((e) => e.property)).toContain('exercise');
+  });
+});
+
+describe('UpdateWorkoutDto top-level fields', () => {
+  it.each([
+    ['name', { name: null }],
+    ['date', { date: null }],
+    ['status', { status: null }],
+  ])('rejects an explicit null %s', async (property, body) => {
+    const errors = await validate(plainToInstance(UpdateWorkoutDto, body), {
+      whitelist: true,
+    });
+    expect(errors.map((e) => e.property)).toEqual([property]);
+  });
+
+  it('accepts a null notes to clear them', async () => {
+    const dto = plainToInstance(UpdateWorkoutDto, { notes: null });
+    expect(await validate(dto, strict)).toHaveLength(0);
+  });
+
+  it('strips assignedById under the global whitelist', async () => {
+    const dto = plainToInstance(UpdateWorkoutDto, {
+      name: 'Mine',
+      assignedById: CARD_ID,
+    });
+    expect(await validate(dto, { whitelist: true })).toHaveLength(0);
+    expect(dto).not.toHaveProperty('assignedById');
+  });
+});
+
+describe('CreateWorkoutDto', () => {
+  it('strips assignedById under the global whitelist', async () => {
+    const dto = plainToInstance(CreateWorkoutDto, {
+      date: '2026-10-04T00:00:00.000Z',
+      name: 'Leg day',
+      assignedById: CARD_ID,
+    });
+    expect(await validate(dto, { whitelist: true })).toHaveLength(0);
+    expect(dto).not.toHaveProperty('assignedById');
+  });
+});
+
+describe('SetResultDto', () => {
+  it('accepts made, actualReps and actualWeight', async () => {
+    const dto = plainToInstance(SetResultDto, {
+      made: true,
+      actualReps: 3,
+      actualWeight: 105,
+    });
+    expect(await validate(dto, strict)).toHaveLength(0);
+    expect(dto).toMatchObject({ made: true, actualReps: 3, actualWeight: 105 });
+  });
+
+  it('accepts null to clear a result, and an empty body', async () => {
+    const cleared = plainToInstance(SetResultDto, {
+      made: null,
+      actualReps: null,
+      actualWeight: null,
+    });
+    expect(await validate(cleared, strict)).toHaveLength(0);
+    expect(
+      await validate(plainToInstance(SetResultDto, {}), strict),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    ['made', { made: 'yes' }],
+    ['actualReps', { actualReps: 2.5 }],
+    ['actualWeight', { actualWeight: 'heavy' }],
+  ])('rejects a bad %s', async (property, body) => {
+    const errors = await validate(plainToInstance(SetResultDto, body), {
+      whitelist: true,
+    });
+    expect(errors.map((e) => e.property)).toContain(property);
+  });
+
+  it.each([
+    ['reps', { reps: 5 }],
+    ['weight', { weight: 100 }],
+    ['weight', { weight: null }],
+    ['notes', { notes: 'easy' }],
+  ])(
+    'rejects the planned field %s under the global whitelist',
+    async (property, body) => {
+      const errors = await validate(
+        plainToInstance(SetResultDto, { made: true, ...body }),
+        { whitelist: true },
+      );
+      expect(errors.map((e) => e.property)).toEqual([property]);
+    },
+  );
+});
+
+describe('AddSetDto', () => {
+  it('accepts reps alone, and reps with a weight and results', async () => {
+    expect(
+      await validate(plainToInstance(AddSetDto, { reps: 5 }), strict),
+    ).toHaveLength(0);
+    const dto = plainToInstance(AddSetDto, {
+      reps: 5,
+      weight: null,
+      made: true,
+      actualReps: 4,
+      actualWeight: 80,
+    });
+    expect(await validate(dto, strict)).toHaveLength(0);
+  });
+
+  it.each([
+    ['reps', {}],
+    ['reps', { reps: 2.5 }],
+    ['weight', { reps: 5, weight: 'x' }],
+    ['made', { reps: 5, made: 'yes' }],
+  ])('rejects a bad %s', async (property, body) => {
+    const errors = await validate(plainToInstance(AddSetDto, body), {
+      whitelist: true,
+    });
+    expect(errors.map((e) => e.property)).toContain(property);
   });
 });

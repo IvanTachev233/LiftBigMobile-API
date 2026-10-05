@@ -11,12 +11,14 @@ import {
   IsUrl,
   IsArray,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkoutStatus } from '../entities/workout.entity';
 import { BodyPart } from '../entities/exercise.entity';
+import { Forbidden } from '../../common/forbidden.decorator';
 
 export class CreateWorkoutDto {
   @IsDateString()
@@ -48,9 +50,10 @@ export class WorkoutSetInput {
   @IsInt()
   reps: number;
 
-  @ApiProperty()
+  @ApiProperty({ type: Number, nullable: true })
+  @ValidateIf((_, value) => value !== null)
   @IsNumber()
-  weight: number;
+  weight: number | null;
 
   @ApiPropertyOptional({
     type: 'integer',
@@ -60,10 +63,24 @@ export class WorkoutSetInput {
   @IsInt()
   order?: number;
 
-  @ApiPropertyOptional({ default: false })
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description: 'true = made, false = missed, null = not logged',
+  })
   @IsOptional()
   @IsBoolean()
-  isCompleted?: boolean;
+  made?: boolean | null;
+
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @IsOptional()
+  @IsInt()
+  actualReps?: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  actualWeight?: number | null;
 }
 
 // One exercise card. `id` keeps an existing card of the same workout.
@@ -98,31 +115,33 @@ export class WorkoutExerciseInput {
 }
 
 export class UpdateWorkoutDto {
+  // Absent = unchanged; null is rejected, since these columns are required
   @ApiPropertyOptional()
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String, nullable: true })
   @IsOptional()
   @IsString()
-  notes?: string;
+  notes?: string | null;
 
   @ApiPropertyOptional({ enum: ['PLANNED', 'IN_PROGRESS', 'COMPLETED'] })
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsEnum(['PLANNED', 'IN_PROGRESS', 'COMPLETED'])
   status?: WorkoutStatus;
 
   @ApiPropertyOptional({ format: 'date-time' })
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
   @IsDateString()
   date?: string;
 
-  // When present, replaces all of the workout's cards; when absent, the
-  // cards are left as they are.
+  // When present, cards and sets are updated in place by id, rows without
+  // an id are created and rows left out are deleted; when absent, the cards
+  // are left as they are.
   @ApiPropertyOptional({
     type: () => [WorkoutExerciseInput],
-    description: 'Replaces all cards when present',
+    description: 'Full card list when present; kept rows carry their id',
   })
   @IsOptional()
   @IsArray()
@@ -131,15 +150,62 @@ export class UpdateWorkoutDto {
   exercises?: WorkoutExerciseInput[];
 }
 
-export class LogSetDto {
-  @IsNumber()
+// Client appends a set to a card of one of their workouts
+export class AddSetDto {
+  @ApiProperty({ type: 'integer' })
+  @IsInt()
   reps: number;
 
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @IsOptional()
   @IsNumber()
-  weight: number;
+  weight?: number | null;
 
+  @ApiPropertyOptional({ type: Boolean, nullable: true })
+  @IsOptional()
   @IsBoolean()
-  isCompleted: boolean;
+  made?: boolean | null;
+
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @IsOptional()
+  @IsInt()
+  actualReps?: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  actualWeight?: number | null;
+}
+
+// Client logs the result of one set; the planned values can't be changed
+export class SetResultDto {
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description: 'true = made, false = missed, null = not logged',
+  })
+  @IsOptional()
+  @IsBoolean()
+  made?: boolean | null;
+
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @IsOptional()
+  @IsInt()
+  actualReps?: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  actualWeight?: number | null;
+
+  @Forbidden()
+  reps?: never;
+
+  @Forbidden()
+  weight?: never;
+
+  @Forbidden()
+  notes?: never;
 }
 
 export class CreateExerciseDto {

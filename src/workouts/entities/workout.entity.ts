@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { decimalTransformer } from '../../common/decimal.transformer';
 import { User } from '../../auth/user.entity';
@@ -26,14 +27,22 @@ export class Workout {
   @Column()
   userId: string;
 
+  // The coach who assigned this workout; null for a self-made one.
+  @Column({ type: 'uuid', nullable: true })
+  assignedById: string | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assignedById' })
+  assignedBy: User | null;
+
   @Column()
   date: Date;
 
   @Column()
   name: string;
 
-  @Column({ nullable: true })
-  notes: string;
+  @Column({ type: 'varchar', nullable: true })
+  notes: string | null;
 
   @Column({ default: false })
   isTemplate: boolean;
