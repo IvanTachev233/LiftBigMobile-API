@@ -3,8 +3,12 @@ import {
   BadRequestException,
   ExecutionContext,
   ForbiddenException,
+  INestApplication,
+  NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
+import request from 'supertest';
+import type { App } from 'supertest/types';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { UpdateWorkoutDto } from './dto/workout.dto';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
@@ -117,7 +121,7 @@ describe('WorkoutsController', () => {
           reps: 5,
           weight: 100,
           order: 1,
-          isCompleted: false,
+          made: null,
         },
       ],
     };
@@ -184,11 +188,152 @@ describe('WorkoutsController', () => {
       expect.arrayContaining(['exerciseId', 'order', 'sets']),
     );
     expect(Object.keys(schemas.WorkoutSetInput.properties).sort()).toEqual([
+      'actualReps',
+      'actualWeight',
       'id',
-      'isCompleted',
+      'made',
       'order',
       'reps',
       'weight',
     ]);
+  });
+});
+
+const WORKOUT = '2f1c1f4e-0a3b-4c55-9f0e-6b1f3c2d4e01';
+const CARD = '2f1c1f4e-0a3b-4c55-9f0e-6b1f3c2d4e02';
+const SET = '2f1c1f4e-0a3b-4c55-9f0e-6b1f3c2d4e03';
+
+// The app's ValidationPipe; only the JWT check is faked.
+describe('WorkoutsController set routes (HTTP)', () => {
+  let app: INestApplication<App>;
+  const workoutsService = {
+    addSet: jest.fn(() => Promise.resolve({ id: SET })),
+    updateSetResult: jest.fn(() => Promise.resolve({ id: SET })),
+    update: jest.fn(() => Promise.resolve({ id: WORKOUT })),
+    remove: jest.fn(() => Promise.resolve()),
+  };
+  const caller = { id: 'client-1', role: 'CLIENT' };
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [WorkoutsController],
+      providers: [{ provide: WorkoutsService, useValue: workoutsService }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (ctx: ExecutionContext) => {
+          ctx.switchToHttp().getRequest<{ user: unknown }>().user = caller;
+          return true;
+        },
+      })
+      .compile();
+    app = module.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true }),
+    );
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(() => jest.clearAllMocks());
+
+  describe('POST /workouts/:id/cards/:cardId/sets', () => {
+    const url = `/workouts/${WORKOUT}/cards/${CARD}/sets`;
+
+    it('201s and forwards the set and caller', async () => {
+      await request(app.getHttpServer())
+        .post(url)
+        .send({ reps: 5, weight: null, made: true, actualReps: 4 })
+        .expect(201);
+      expect(workoutsService.addSet).toHaveBeenCalledWith(
+        WORKOUT,
+        CARD,
+        { reps: 5, weight: null, made: true, actualReps: 4 },
+        caller,
+      );
+    });
+
+    it('400s a non-uuid card id or a bad body', async () => {
+      await request(app.getHttpServer())
+        .post(`/workouts/${WORKOUT}/cards/not-a-uuid/sets`)
+        .send({ reps: 5 })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(url)
+        .send({ reps: 'five' })
+        .expect(400);
+      expect(workoutsService.addSet).not.toHaveBeenCalled();
+    });
+
+    it('passes the service 404 through', async () => {
+      workoutsService.addSet.mockRejectedValueOnce(new NotFoundException());
+      await request(app.getHttpServer())
+        .post(url)
+        .send({ reps: 5 })
+        .expect(404);
+    });
+  });
+
+  describe('PATCH /workouts/:id/sets/:setId', () => {
+    const url = `/workouts/${WORKOUT}/sets/${SET}`;
+
+    it('forwards exactly the result fields', async () => {
+      await request(app.getHttpServer())
+        .patch(url)
+        .send({ actualReps: 3, actualWeight: 105, made: true })
+        .expect(200);
+      expect(workoutsService.updateSetResult).toHaveBeenCalledWith(
+        WORKOUT,
+        SET,
+        { actualReps: 3, actualWeight: 105, made: true },
+        caller,
+      );
+    });
+
+    it.each([
+      ['reps', { reps: 5 }],
+      ['weight', { weight: 100 }],
+      ['notes', { notes: 'x' }],
+    ])('400s a body carrying %s', async (_label, body) => {
+      await request(app.getHttpServer())
+        .patch(url)
+        .send({ made: true, ...body })
+        .expect(400);
+      expect(workoutsService.updateSetResult).not.toHaveBeenCalled();
+    });
+
+    it('400s a non-uuid set id', async () => {
+      await request(app.getHttpServer())
+        .patch(`/workouts/${WORKOUT}/sets/nope`)
+        .send({ made: true })
+        .expect(400);
+    });
+  });
+
+  it.each([
+    ['get', '/workouts/nope'],
+    ['patch', '/workouts/nope'],
+    ['delete', '/workouts/nope'],
+  ])('400s a non-uuid id on %s %s', async (method, url) => {
+    await (
+      request(app.getHttpServer())[method as 'get'](url) as request.Test
+    ).expect(400);
+    expect(workoutsService.update).not.toHaveBeenCalled();
+    expect(workoutsService.remove).not.toHaveBeenCalled();
+  });
+
+  it('passes the service 403 for an assigned workout through on PATCH and DELETE', async () => {
+    workoutsService.update.mockRejectedValueOnce(new ForbiddenException());
+    await request(app.getHttpServer())
+      .patch(`/workouts/${WORKOUT}`)
+      .send({ name: 'Mine' })
+      .expect(403);
+    workoutsService.remove.mockRejectedValueOnce(new ForbiddenException());
+    await request(app.getHttpServer())
+      .delete(`/workouts/${WORKOUT}`)
+      .expect(403);
   });
 });

@@ -8,12 +8,6 @@ import {
 import { decimalTransformer } from '../../common/decimal.transformer';
 import { WorkoutExercise } from './workout-exercise.entity';
 
-export enum WeightMode {
-  EXACT = 'EX',
-  PERCENTAGE = 'PC',
-  RPE = 'RP',
-}
-
 @Entity()
 export class WorkoutSet {
   @PrimaryGeneratedColumn('uuid')
@@ -29,34 +23,36 @@ export class WorkoutSet {
   @JoinColumn({ name: 'workoutExerciseId' })
   workoutExercise: WorkoutExercise;
 
+  // Planned reps and weight.
   @Column()
   reps: number;
 
   @Column('decimal', {
-    precision: 5,
+    precision: 6,
     scale: 2,
+    nullable: true,
     transformer: decimalTransformer,
   })
-  weight: number;
+  weight: number | null;
 
-  @Column({
-    type: 'enum',
-    enum: WeightMode,
-    default: WeightMode.EXACT,
+  // Logged values; null means "as planned" once the set is logged.
+  @Column({ type: 'integer', nullable: true })
+  actualReps: number | null;
+
+  @Column('decimal', {
+    precision: 6,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
   })
-  weightMode: WeightMode;
+  actualWeight: number | null;
 
-  @Column('decimal', { nullable: true, transformer: decimalTransformer })
-  expectedWeight: number;
+  // true = made, false = missed, null = not logged.
+  @Column({ type: 'boolean', nullable: true, default: null })
+  made: boolean | null;
 
-  @Column({ nullable: true })
-  actualReps: number;
-
-  @Column('decimal', { nullable: true, transformer: decimalTransformer })
-  actualWeight: number;
-
-  @Column({ default: false })
-  isCompleted: boolean;
+  @Column({ type: 'varchar', nullable: true })
+  notes: string | null;
 
   // Set number inside its card.
   @Column()

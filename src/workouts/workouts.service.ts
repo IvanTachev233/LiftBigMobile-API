@@ -2,37 +2,38 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThanOrEqual, Not, DeepPartial } from 'typeorm';
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { Exercise } from './entities/exercise.entity';
 import { WorkoutExercise } from './entities/workout-exercise.entity';
+import { WorkoutSet } from './entities/workout-set.entity';
 import {
   CreateWorkoutDto,
   UpdateWorkoutDto,
   CreateExerciseDto,
-  WorkoutExerciseInput,
+  AddSetDto,
+  SetResultDto,
 } from './dto/workout.dto';
 import { AuthUser } from '../auth/auth-user.interface';
 import {
-  isExerciseVisible,
   nameEqualsIgnoringCase,
   ownerIdForVisibility,
   visibleExerciseWhere,
 } from './exercise-visibility.util';
-
-const CARD_RELATIONS = ['exercises', 'exercises.exercise', 'exercises.sets'];
-
-// Cards by order, then each card's sets by order.
-function sortCards(workout: Workout): Workout {
-  workout.exercises?.sort((a, b) => a.order - b.order);
-  for (const card of workout.exercises ?? []) {
-    card.sets?.sort((a, b) => a.order - b.order);
-  }
-  return workout;
-}
+import {
+  CARD_RELATIONS,
+  assertExercisesVisible,
+  assertOwnIds,
+  loadCards,
+  lockWorkout,
+  markStarted,
+  refreshTotal,
+  saveCardsInPlace,
+  toWorkoutView,
+} from './workout-cards';
 
 @Injectable()
 export class WorkoutsService {
@@ -77,47 +78,33 @@ export class WorkoutsService {
     return this.exerciseRepo.save(exercise);
   }
 
-  private async assertExercisesVisible(
-    exerciseIds: string[],
-    ownerId: string | null,
-  ): Promise<void> {
-    const uniqueIds = [...new Set(exerciseIds)];
-    for (const exerciseId of uniqueIds) {
-      const visible = await isExerciseVisible(
-        this.exerciseRepo,
-        exerciseId,
-        ownerId,
-      );
-      if (!visible) {
-        throw new BadRequestException(
-          `Exercise "${exerciseId}" is not visible to you`,
-        );
-      }
-    }
-  }
-
   async create(
     createWorkoutDto: CreateWorkoutDto,
     user: AuthUser,
   ): Promise<Workout> {
     const workout = this.workoutRepo.create({
-      ...createWorkoutDto,
-      user,
+      date: createWorkoutDto.date,
+      name: createWorkoutDto.name,
+      notes: createWorkoutDto.notes,
+      isTemplate: createWorkoutDto.isTemplate,
       userId: user.id,
+      assignedById: null,
       status: WorkoutStatus.PLANNED,
-    });
+    } as DeepPartial<Workout>);
     const saved = await this.workoutRepo.save(workout);
     saved.exercises ??= [];
+    saved.assignedBy ??= null;
     return saved;
   }
 
+  // Own workouts, self-made and assigned.
   async findAll(user: AuthUser): Promise<Workout[]> {
     const workouts = await this.workoutRepo.find({
       where: { userId: user.id },
       order: { date: 'DESC' },
       relations: CARD_RELATIONS,
     });
-    return workouts.map(sortCards);
+    return workouts.map(toWorkoutView);
   }
 
   async findUpcoming(user: AuthUser): Promise<Workout[]> {
@@ -133,7 +120,7 @@ export class WorkoutsService {
       relations: CARD_RELATIONS,
       order: { date: 'ASC' },
     });
-    return workouts.map(sortCards);
+    return workouts.map(toWorkoutView);
   }
 
   async findOne(id: string, user: AuthUser): Promise<Workout> {
@@ -144,50 +131,15 @@ export class WorkoutsService {
     if (!workout)
       throw new NotFoundException(`Workout with ID "${id}" not found`);
 
-    return sortCards(workout);
+    return toWorkoutView(workout);
   }
 
-  // A card id must be one of this workout's cards, and a set id one of that
-  // same card's sets; each id may appear once. Anything else is rejected so
-  // rows are never moved across workouts or cards.
-  private assertOwnIds(workout: Workout, cards: WorkoutExerciseInput[]): void {
-    const ownSetIdsByCard = new Map(
-      workout.exercises.map((card) => [
-        card.id,
-        new Set(card.sets.map((set) => set.id)),
-      ]),
-    );
-    const seenCardIds = new Set<string>();
-    const seenSetIds = new Set<string>();
-
-    for (const card of cards) {
-      const ownSetIds = card.id ? ownSetIdsByCard.get(card.id) : undefined;
-      if (card.id && (!ownSetIds || seenCardIds.has(card.id))) {
-        throw new BadRequestException(
-          `Card "${card.id}" is not a card of this workout`,
-        );
-      }
-      if (card.id) seenCardIds.add(card.id);
-
-      for (const set of card.sets) {
-        if (!set.id) continue;
-        if (!ownSetIds?.has(set.id) || seenSetIds.has(set.id)) {
-          throw new BadRequestException(
-            `Set "${set.id}" is not a set of this card`,
-          );
-        }
-        seenSetIds.add(set.id);
-      }
-    }
-  }
-
+  // Self-made: every field, cards saved in place by id. Assigned: status only.
   async update(
     id: string,
     updateWorkoutDto: UpdateWorkoutDto,
     user: AuthUser,
   ): Promise<Workout> {
-    const workout = await this.findOne(id, user);
-
     const { exercises: cards, date, ...fields } = updateWorkoutDto;
     // DTO instances carry unset fields as own `undefined` properties
     const patch: DeepPartial<Workout> = Object.fromEntries(
@@ -195,60 +147,128 @@ export class WorkoutsService {
     );
     if (date !== undefined) patch.date = new Date(date);
 
-    if (cards !== undefined) {
-      this.assertOwnIds(workout, cards);
-      await this.assertExercisesVisible(
-        cards.map((card) => card.exerciseId),
-        ownerIdForVisibility(user),
-      );
-
-      // Total volume: weight × reps over every set of every card
-      patch.totalWeightLifted = cards.reduce(
-        (sum, card) =>
-          sum +
-          card.sets.reduce(
-            (setSum, set) =>
-              setSum + (Number(set.weight) || 0) * (Number(set.reps) || 0),
-            0,
-          ),
-        0,
-      );
-    }
-
     await this.workoutRepo.manager.transaction(async (manager) => {
-      if (cards !== undefined) {
-        // Replace all cards (their sets go with them); own ids are reused.
-        await manager.delete(WorkoutExercise, { workoutId: id });
-        const rows = cards.map((card) =>
-          manager.create(WorkoutExercise, {
-            id: card.id,
-            workoutId: id,
-            exerciseId: card.exerciseId,
-            order: card.order,
-            supersetGroup: card.supersetGroup ?? null,
-            sets: card.sets.map((set, i) => ({
-              id: set.id,
-              reps: set.reps,
-              weight: set.weight,
-              order: set.order ?? i + 1,
-              isCompleted: set.isCompleted ?? false,
-            })),
-          }),
+      const workout = await lockWorkout(manager, { id, userId: user.id });
+      if (!workout) {
+        throw new NotFoundException(`Workout with ID "${id}" not found`);
+      }
+      const changesPlan =
+        cards !== undefined || Object.keys(patch).some((k) => k !== 'status');
+      if (workout.assignedById !== null && changesPlan) {
+        throw new ForbiddenException(
+          'Only the status of an assigned workout can be changed',
         );
-        await manager.save(WorkoutExercise, rows);
+      }
+
+      if (cards !== undefined) {
+        const existing = await loadCards(manager, id);
+        assertOwnIds(existing, cards, 'self');
+        await assertExercisesVisible(
+          manager.getRepository(Exercise),
+          cards.map((card) => card.exerciseId),
+          ownerIdForVisibility(user),
+        );
+        await saveCardsInPlace(manager, id, existing, cards, 'self');
       }
       if (Object.keys(patch).length > 0) {
-        await manager.update(Workout, { id, userId: user.id }, patch);
+        await manager.update(Workout, { id }, patch);
       }
+      if (cards !== undefined) await refreshTotal(manager, id);
     });
 
     return this.findOne(id, user);
   }
 
   async remove(id: string, user: AuthUser): Promise<void> {
-    const result = await this.workoutRepo.delete({ id, userId: user.id });
-    if (result.affected === 0) {
-      throw new NotFoundException(`Workout with ID "${id}" not found`);
-    }
+    await this.workoutRepo.manager.transaction(async (manager) => {
+      const workout = await lockWorkout(manager, { id, userId: user.id });
+      if (!workout) {
+        throw new NotFoundException(`Workout with ID "${id}" not found`);
+      }
+      if (workout.assignedById !== null) {
+        throw new ForbiddenException(
+          'An assigned workout can only be deleted by the coach',
+        );
+      }
+      await manager.delete(Workout, { id });
+    });
+  }
+
+  // Appends a set to a card of an own workout, self-made or assigned.
+  async addSet(
+    id: string,
+    cardId: string,
+    dto: AddSetDto,
+    user: AuthUser,
+  ): Promise<WorkoutSet> {
+    return this.workoutRepo.manager.transaction(async (manager) => {
+      const workout = await lockWorkout(manager, { id, userId: user.id });
+      if (!workout) {
+        throw new NotFoundException(`Workout with ID "${id}" not found`);
+      }
+      const card = await manager.findOne(WorkoutExercise, {
+        where: { id: cardId, workoutId: id },
+        relations: { sets: true },
+      });
+      if (!card) {
+        throw new NotFoundException(`Card "${cardId}" not found on workout`);
+      }
+
+      const lastOrder = card.sets.reduce(
+        (max, set) => Math.max(max, set.order),
+        0,
+      );
+      const { identifiers } = await manager.insert(WorkoutSet, {
+        workoutExerciseId: card.id,
+        reps: dto.reps,
+        weight: dto.weight ?? null,
+        notes: null,
+        made: dto.made ?? null,
+        actualReps: dto.actualReps ?? null,
+        actualWeight: dto.actualWeight ?? null,
+        order: lastOrder + 1,
+      });
+      if (dto.made !== undefined && dto.made !== null) {
+        await markStarted(manager, workout);
+      }
+      await refreshTotal(manager, id);
+      return manager.findOneOrFail(WorkoutSet, {
+        where: { id: identifiers[0].id as string },
+      });
+    });
+  }
+
+  // Logs the result of one set; planned values are never written here.
+  async updateSetResult(
+    id: string,
+    setId: string,
+    dto: SetResultDto,
+    user: AuthUser,
+  ): Promise<WorkoutSet> {
+    return this.workoutRepo.manager.transaction(async (manager) => {
+      const workout = await lockWorkout(manager, { id, userId: user.id });
+      if (!workout) {
+        throw new NotFoundException(`Workout with ID "${id}" not found`);
+      }
+      const set = await manager.findOne(WorkoutSet, {
+        where: { id: setId, workoutExercise: { workoutId: id } },
+      });
+      if (!set) {
+        throw new NotFoundException(`Set "${setId}" not found on workout`);
+      }
+
+      const results: Partial<WorkoutSet> = {};
+      if (dto.made !== undefined) results.made = dto.made;
+      if (dto.actualReps !== undefined) results.actualReps = dto.actualReps;
+      if (dto.actualWeight !== undefined) {
+        results.actualWeight = dto.actualWeight;
+      }
+      if (Object.keys(results).length > 0) {
+        await manager.update(WorkoutSet, { id: setId }, results);
+        await markStarted(manager, workout);
+      }
+      await refreshTotal(manager, id);
+      return manager.findOneOrFail(WorkoutSet, { where: { id: setId } });
+    });
   }
 }

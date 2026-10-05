@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   Request,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { WorkoutsService } from './workouts.service';
@@ -15,6 +16,8 @@ import {
   CreateWorkoutDto,
   UpdateWorkoutDto,
   CreateExerciseDto,
+  AddSetDto,
+  SetResultDto,
 } from './dto/workout.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -64,21 +67,49 @@ export class WorkoutsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.workoutsService.findOne(id, req.user);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateWorkoutDto: UpdateWorkoutDto,
     @Request() req: AuthenticatedRequest,
   ) {
     return this.workoutsService.update(id, updateWorkoutDto, req.user);
   }
 
+  @Post(':id/cards/:cardId/sets')
+  @ApiOperation({ summary: 'Add a set to a card of an own workout' })
+  addSet(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('cardId', ParseUUIDPipe) cardId: string,
+    @Body() dto: AddSetDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.workoutsService.addSet(id, cardId, dto, req.user);
+  }
+
+  @Patch(':id/sets/:setId')
+  @ApiOperation({ summary: 'Log the result of a set of an own workout' })
+  updateSetResult(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('setId', ParseUUIDPipe) setId: string,
+    @Body() dto: SetResultDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.workoutsService.updateSetResult(id, setId, dto, req.user);
+  }
+
   @Delete(':id')
-  remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.workoutsService.remove(id, req.user);
   }
 }
