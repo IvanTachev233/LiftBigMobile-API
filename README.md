@@ -48,11 +48,13 @@ Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as r
 ```bash
 npm run build
 npm test            # unit tests (Jest)
-npm run test:e2e    # boots the full AppModule, so it needs the database running
+npm run test:e2e    # full AppModule on the liftbig_e2e database (needs the postgres container)
 npm run test:cov
 npm run lint        # ESLint with --fix: it rewrites files
 npm run format      # Prettier
 ```
+
+`npm run test:e2e` needs the postgres container (`docker compose up -d postgres` from the workspace root). It creates a `liftbig_e2e` database on that server if it is missing and rebuilds its schema from scratch for each test app, so `liftbig_db` is never touched. It refuses to run while `DATABASE_URL` is set.
 
 ## Deployment
 

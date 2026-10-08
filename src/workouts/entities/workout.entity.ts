@@ -8,6 +8,8 @@ import {
 } from 'typeorm';
 import { decimalTransformer } from '../../common/decimal.transformer';
 import { User } from '../../auth/user.entity';
+import { ProgramEnrollment } from '../../programs/entities/program-enrollment.entity';
+import { ProgramTemplateSession } from '../../programs/entities/program-template-session.entity';
 import { WorkoutExercise } from './workout-exercise.entity';
 
 export enum WorkoutStatus {
@@ -34,6 +36,25 @@ export class Workout {
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'assignedById' })
   assignedBy: User | null;
+
+  // The program enrollment and template session this workout was generated
+  // from; null for workouts not from a program.
+  @Column({ type: 'uuid', nullable: true })
+  programEnrollmentId: string | null;
+
+  @ManyToOne(() => ProgramEnrollment, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'programEnrollmentId' })
+  programEnrollment: ProgramEnrollment | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  programSessionId: string | null;
+
+  @ManyToOne(() => ProgramTemplateSession, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'programSessionId' })
+  programSession: ProgramTemplateSession | null;
 
   @Column()
   date: Date;

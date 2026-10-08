@@ -6,6 +6,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { decimalTransformer } from '../../common/decimal.transformer';
+import { Exercise } from './exercise.entity';
 import { WorkoutExercise } from './workout-exercise.entity';
 
 @Entity()
@@ -34,6 +35,23 @@ export class WorkoutSet {
     transformer: decimalTransformer,
   })
   weight: number | null;
+
+  // For program sets: the planned weight is prescribedPercent of the user's
+  // 1RM on referenceExerciseId.
+  @Column('decimal', {
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  prescribedPercent: number | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  referenceExerciseId: string | null;
+
+  @ManyToOne(() => Exercise, { nullable: true, onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'referenceExerciseId' })
+  referenceExercise: Exercise | null;
 
   // Logged values; null means "as planned" once the set is logged.
   @Column({ type: 'integer', nullable: true })

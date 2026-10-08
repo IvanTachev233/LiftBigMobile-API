@@ -9,6 +9,7 @@ import { WorkoutsService } from './workouts.service';
 import { CoachWorkoutsService } from './coach-workouts.service';
 import { CoachCardInput } from './dto/coach-workout.dto';
 import { lockWorkout } from './workout-cards';
+import { programEntities } from '../programs/entities';
 
 // Runs only against a scratch Postgres database named in
 // WORKOUT_LOCK_SPEC_DB; the schema is dropped and recreated from the
@@ -39,7 +40,14 @@ describeDb('workout writes on Postgres', () => {
       username: process.env.DB_USERNAME || 'liftbig',
       password: process.env.DB_PASSWORD || 'password123',
       database: DB_NAME,
-      entities: [Workout, WorkoutExercise, WorkoutSet, Exercise, User],
+      entities: [
+        Workout,
+        WorkoutExercise,
+        WorkoutSet,
+        Exercise,
+        User,
+        ...programEntities,
+      ],
       synchronize: true,
       dropSchema: true,
     });

@@ -5,6 +5,7 @@ import { WorkoutExercise } from '../workouts/entities/workout-exercise.entity';
 import { WorkoutSet } from '../workouts/entities/workout-set.entity';
 import { Exercise } from '../workouts/entities/exercise.entity';
 import { User } from '../auth/user.entity';
+import { programEntities } from '../programs/entities';
 
 // Lives outside src/migrations, whose glob loads every .ts file as a
 // migration. The data itself is checked against copies of real databases.
@@ -46,7 +47,14 @@ const WRITE = /^\s*(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE)\b/i;
 async function workoutMetadata() {
   const dataSource = new DataSource({
     type: 'postgres',
-    entities: [Workout, WorkoutExercise, WorkoutSet, Exercise, User],
+    entities: [
+      Workout,
+      WorkoutExercise,
+      WorkoutSet,
+      Exercise,
+      User,
+      ...programEntities,
+    ],
   });
   await (
     dataSource as unknown as { buildMetadatas(): Promise<void> }
