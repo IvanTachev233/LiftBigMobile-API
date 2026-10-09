@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Generated,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -14,8 +15,10 @@ import { Exercise } from '../../workouts/entities/exercise.entity';
 import { WorkoutSet } from '../../workouts/entities/workout-set.entity';
 import { LiftRecordSource } from './lift-record-source';
 
-// One recorded rep max. Rows are only ever appended. workoutSetId is the
-// logged set it came from, if any; a set is recorded at most once.
+// One recorded rep max. workoutSetId is the logged set it came from, if
+// any; a set is recorded at most once and its entry goes with it. A removed
+// entry (removedAt set) is kept so its set is never recorded again, but
+// counts nowhere.
 @Entity('rep_max_entry')
 @Check('"reps" >= 1')
 export class RepMaxEntry {
@@ -58,10 +61,19 @@ export class RepMaxEntry {
   @Column({ type: 'uuid', nullable: true, unique: true })
   workoutSetId: string | null;
 
-  @ManyToOne(() => WorkoutSet, { onDelete: 'SET NULL', nullable: true })
+  @ManyToOne(() => WorkoutSet, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'workoutSetId' })
   workoutSet: WorkoutSet | null;
 
+  @Column({ type: 'timestamp', nullable: true })
+  removedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
+
+  // Insertion order. Entries saved in one transaction share createdAt, so
+  // this breaks their ties.
+  @Column({ type: 'bigint', transformer: decimalTransformer })
+  @Generated('increment')
+  seq: number;
 }

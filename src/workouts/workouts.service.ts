@@ -5,7 +5,13 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, Not, DeepPartial } from 'typeorm';
+import {
+  Repository,
+  MoreThanOrEqual,
+  Not,
+  DeepPartial,
+  EntityManager,
+} from 'typeorm';
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { Exercise } from './entities/exercise.entity';
 import { WorkoutExercise } from './entities/workout-exercise.entity';
@@ -34,9 +40,21 @@ import {
   programNamesOf,
   refreshTotal,
   saveCardsInPlace,
+  setIdsOf,
+  SetView,
   toWorkoutView,
 } from './workout-cards';
 import { completeEnrollmentIfDone } from '../programs/enrollment-completion';
+import {
+  LiftRecordsService,
+  RecordedExercise,
+} from '../lifts/lift-records.service';
+
+// A set returned by a set write, with the pb flags of its whole workout so
+// the caller needs no reload.
+export type SetResultView = SetView & {
+  workoutPb: { hasPb: boolean; pbSetIds: string[] };
+};
 
 @Injectable()
 export class WorkoutsService {
@@ -45,6 +63,7 @@ export class WorkoutsService {
     private workoutRepo: Repository<Workout>,
     @InjectRepository(Exercise)
     private exerciseRepo: Repository<Exercise>,
+    private readonly lifts: LiftRecordsService,
   ) {}
 
   async findAllExercises(user: AuthUser): Promise<Exercise[]> {
@@ -168,6 +187,7 @@ export class WorkoutsService {
         );
       }
 
+      let recorded: RecordedExercise[] = [];
       if (cards !== undefined) {
         const existing = await loadCards(manager, id);
         assertOwnIds(existing, cards, 'self');
@@ -176,12 +196,16 @@ export class WorkoutsService {
           cards.map((card) => card.exerciseId),
           ownerIdForVisibility(user),
         );
+        recorded = await this.lifts.recordedExercises(manager, { id });
         await saveCardsInPlace(manager, id, existing, cards, 'self');
       }
       if (Object.keys(patch).length > 0) {
         await manager.update(Workout, { id }, patch);
       }
       if (cards !== undefined) await refreshTotal(manager, id);
+      if (cards !== undefined || patch.date !== undefined) {
+        await this.lifts.reconcileWorkout(manager, id, recorded);
+      }
       if (
         workout.programEnrollmentId &&
         patch.status === WorkoutStatus.COMPLETED
@@ -206,7 +230,9 @@ export class WorkoutsService {
             : 'An assigned workout can only be deleted by the coach',
         );
       }
+      const recorded = await this.lifts.recordedExercises(manager, { id });
       await manager.delete(Workout, { id });
+      await this.lifts.recomputeAfterDelete(manager, recorded);
     });
   }
 
@@ -216,7 +242,7 @@ export class WorkoutsService {
     cardId: string,
     dto: AddSetDto,
     user: AuthUser,
-  ): Promise<WorkoutSet> {
+  ): Promise<SetResultView> {
     return this.workoutRepo.manager.transaction(async (manager) => {
       const workout = await lockWorkout(manager, { id, userId: user.id });
       if (!workout) {
@@ -248,9 +274,8 @@ export class WorkoutsService {
         await markStarted(manager, workout);
       }
       await refreshTotal(manager, id);
-      return manager.findOneOrFail(WorkoutSet, {
-        where: { id: identifiers[0].id as string },
-      });
+      await this.lifts.reconcileWorkout(manager, id);
+      return this.setResultView(manager, id, identifiers[0].id as string);
     });
   }
 
@@ -260,7 +285,7 @@ export class WorkoutsService {
     setId: string,
     dto: SetResultDto,
     user: AuthUser,
-  ): Promise<WorkoutSet> {
+  ): Promise<SetResultView> {
     return this.workoutRepo.manager.transaction(async (manager) => {
       const workout = await lockWorkout(manager, { id, userId: user.id });
       if (!workout) {
@@ -284,12 +309,39 @@ export class WorkoutsService {
         await markStarted(manager, workout);
       }
       await refreshTotal(manager, id);
-      return manager.findOneOrFail(WorkoutSet, { where: { id: setId } });
+      await this.lifts.reconcileWorkout(manager, id);
+      return this.setResultView(manager, id, setId);
     });
   }
 
   private async toViews(workouts: Workout[]): Promise<Workout[]> {
-    const names = await programNamesOf(this.workoutRepo.manager, workouts);
-    return workouts.map((workout) => toWorkoutView(workout, names));
+    const manager = this.workoutRepo.manager;
+    const names = await programNamesOf(manager, workouts);
+    const pbs = await this.lifts.pbSetIds(manager, setIdsOf(workouts));
+    return workouts.map((workout) => toWorkoutView(workout, names, pbs));
+  }
+
+  private async setResultView(
+    manager: EntityManager,
+    workoutId: string,
+    setId: string,
+  ): Promise<SetResultView> {
+    const cards = (await loadCards(manager, workoutId)).sort(
+      (a, b) => a.order - b.order,
+    );
+    const setIds = cards.flatMap((card) =>
+      [...card.sets].sort((a, b) => a.order - b.order).map((set) => set.id),
+    );
+    const pbs = await this.lifts.pbSetIds(manager, setIds);
+    const set = await manager.findOneOrFail(WorkoutSet, {
+      where: { id: setId },
+    });
+    return Object.assign(set, {
+      pb: pbs.has(setId),
+      workoutPb: {
+        hasPb: pbs.size > 0,
+        pbSetIds: setIds.filter((sid) => pbs.has(sid)),
+      },
+    });
   }
 }

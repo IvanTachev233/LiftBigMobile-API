@@ -15,7 +15,11 @@ import { LiftRecordsService } from '../lifts/lift-records.service';
 import { WorkoutExercise } from '../workouts/entities/workout-exercise.entity';
 import { WorkoutSet } from '../workouts/entities/workout-set.entity';
 import { Workout, WorkoutStatus } from '../workouts/entities/workout.entity';
-import { CARD_RELATIONS, toWorkoutView } from '../workouts/workout-cards';
+import {
+  CARD_RELATIONS,
+  setIdsOf,
+  toWorkoutView,
+} from '../workouts/workout-cards';
 import { buildSchedule } from './domain/schedule';
 import { prescribedTargetKg, targetWeightKg } from './domain/weights';
 import {
@@ -68,7 +72,7 @@ export class EnrollmentService {
         if (active && !dto.abandonCurrent) {
           throw new ConflictException('You already have an active program');
         }
-        if (active) await abandonEnrollment(manager, active.id);
+        if (active) await abandonEnrollment(manager, this.lifts, active.id);
 
         await this.recordSetupMaxes(manager, user.id, dto.maxes);
         const enrollment = await manager.save(
@@ -82,7 +86,7 @@ export class EnrollmentService {
           }),
         );
         await this.createWorkouts(manager, owner, program, enrollment);
-        return enrollmentView(manager, enrollment.id);
+        return enrollmentView(manager, this.lifts, enrollment.id);
       });
     } catch (error) {
       if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
@@ -98,7 +102,11 @@ export class EnrollmentService {
       .findOneBy({ userId: user.id, status: ProgramEnrollmentStatus.ACTIVE });
     return {
       active: enrollment
-        ? await enrollmentView(this.dataSource.manager, enrollment.id)
+        ? await enrollmentView(
+            this.dataSource.manager,
+            this.lifts,
+            enrollment.id,
+          )
         : null,
     };
   }
@@ -109,8 +117,8 @@ export class EnrollmentService {
     return this.dataSource.transaction(async (manager) => {
       await lockUser(manager, user.id);
       await activeEnrollment(manager, user.id, id);
-      await abandonEnrollment(manager, id);
-      return enrollmentView(manager, id);
+      await abandonEnrollment(manager, this.lifts, id);
+      return enrollmentView(manager, this.lifts, id);
     });
   }
 
@@ -152,7 +160,7 @@ export class EnrollmentService {
         );
         await manager.update(WorkoutSet, { id: set.id }, { weight });
       }
-      return enrollmentView(manager, id);
+      return enrollmentView(manager, this.lifts, id);
     });
   }
 
@@ -257,8 +265,10 @@ async function activeEnrollment(
   return enrollment;
 }
 
+// Rep max entries of the deleted workouts' sets go with them.
 async function abandonEnrollment(
   manager: EntityManager,
+  lifts: LiftRecordsService,
   id: string,
 ): Promise<void> {
   await manager.update(
@@ -266,10 +276,13 @@ async function abandonEnrollment(
     { id },
     { status: ProgramEnrollmentStatus.ABANDONED },
   );
-  await manager.delete(Workout, {
+  const planned = {
     programEnrollmentId: id,
     status: WorkoutStatus.PLANNED,
-  });
+  };
+  const recorded = await lifts.recordedExercises(manager, planned);
+  await manager.delete(Workout, planned);
+  await lifts.recomputeAfterDelete(manager, recorded);
 }
 
 function assertDistinctLifts(maxes: MaxInput[]): void {
@@ -310,7 +323,11 @@ function checkMaxes(
   );
 }
 
-async function enrollmentView(manager: EntityManager, id: string) {
+async function enrollmentView(
+  manager: EntityManager,
+  lifts: LiftRecordsService,
+  id: string,
+) {
   const enrollment = await manager.findOneOrFail(ProgramEnrollment, {
     where: { id },
     relations: { program: true },
@@ -321,6 +338,7 @@ async function enrollmentView(manager: EntityManager, id: string) {
     order: { date: 'ASC' },
   });
   const { program } = enrollment;
+  const pbs = await lifts.pbSetIds(manager, setIdsOf(workouts));
   return {
     id: enrollment.id,
     status: enrollment.status,
@@ -337,7 +355,7 @@ async function enrollmentView(manager: EntityManager, id: string) {
       sessionsPerWeek: program.sessionsPerWeek,
     },
     workouts: workouts.map((workout) =>
-      toWorkoutView(workout, new Map([[enrollment.id, program.name]])),
+      toWorkoutView(workout, new Map([[enrollment.id, program.name]]), pbs),
     ),
   };
 }

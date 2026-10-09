@@ -248,19 +248,34 @@ describe('program and lift entity metadata', () => {
       ]);
     });
 
-    it('links a rep max to at most one set, kept when the set is deleted', () => {
+    it('links a rep max to at most one set, deleted with the set', () => {
       const entry = meta(RepMaxEntry);
       expect(uniqueColumnSets(entry)).toContainEqual(['workoutSetId']);
       expect(column(entry, 'workoutSetId').isNullable).toBe(true);
       expect(foreignKey(entry, 'workoutSetId')).toEqual({
         table: 'workout_set',
-        onDelete: 'SET NULL',
+        onDelete: 'CASCADE',
       });
       expect(foreignKey(entry, 'userId').onDelete).toBe('CASCADE');
       expect(foreignKey(entry, 'exerciseId').onDelete).toBe('RESTRICT');
       expect(column(entry, 'reps').type).toBe('integer');
       expect(entry.checks.map((c) => c.expression)).toEqual(['"reps" >= 1']);
       expect(entry.createDateColumn?.propertyName).toBe('createdAt');
+    });
+
+    it('numbers rep maxes in insertion order with a generated bigint seq', () => {
+      const seq = column(meta(RepMaxEntry), 'seq');
+      expect(seq.type).toBe('bigint');
+      expect(seq.isGenerated).toBe(true);
+      expect(seq.generationStrategy).toBe('increment');
+      expect(seq.isNullable).toBe(false);
+    });
+
+    it('marks a removed rep max with a nullable removedAt timestamp', () => {
+      const removedAt = column(meta(RepMaxEntry), 'removedAt');
+      expect(removedAt.isNullable).toBe(true);
+      expect(removedAt.type).toBe('timestamp');
+      expect(removedAt.default).toBeUndefined();
     });
   });
 

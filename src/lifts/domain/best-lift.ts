@@ -49,27 +49,38 @@ export function setupEntries<T extends EnteredMax>(
   });
 }
 
-export interface DatedEntry {
-  reps: number;
+export interface OrderedEntry {
   achievedOn: string;
   createdAt: Date;
+  seq: number;
 }
 
-// The newest entry for each rep count (by achievedOn, then createdAt),
-// null where there is none.
+// The order of entries in time: by achievedOn, then createdAt, then
+// insertion (seq), so no two persisted entries tie.
+export function compareEntries(a: OrderedEntry, b: OrderedEntry): number {
+  if (a.achievedOn !== b.achievedOn)
+    return a.achievedOn < b.achievedOn ? -1 : 1;
+  const time = a.createdAt.getTime() - b.createdAt.getTime();
+  return time !== 0 ? time : a.seq - b.seq;
+}
+
+export interface DatedEntry extends OrderedEntry {
+  reps: number;
+}
+
+// The newest entry for each rep count (compareEntries), null where there
+// is none.
 export function latestByReps<T extends DatedEntry>(
   entries: T[],
   repCounts: number[],
 ): { reps: number; entry: T | null }[] {
-  const isNewer = (a: T, b: T) =>
-    a.achievedOn !== b.achievedOn
-      ? a.achievedOn > b.achievedOn
-      : a.createdAt.getTime() > b.createdAt.getTime();
-
   return repCounts.map((reps) => {
     let latest: T | null = null;
     for (const entry of entries) {
-      if (entry.reps === reps && (!latest || isNewer(entry, latest))) {
+      if (
+        entry.reps === reps &&
+        (!latest || compareEntries(entry, latest) > 0)
+      ) {
         latest = entry;
       }
     }

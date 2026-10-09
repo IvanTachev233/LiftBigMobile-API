@@ -190,26 +190,28 @@ describe('Premade programs, end to end (e2e)', () => {
     ).body as WorkoutView;
     expect(completed).toMatchObject({ status: 'COMPLETED', source: 'program' });
 
-    // Record the 3-rep squat set as a rep max
-    const recorded = (
-      await call('post', `/lifts/rep-maxes/from-set/${lastSquat.id}`).expect(
-        201,
-      )
-    ).body as { entry: { reps: number; weightKg: number } };
-    expect(recorded.entry).toMatchObject({
-      reps: 3,
-      weightKg: 100,
-      achievedOn: startDate,
-      source: 'LOGGED_SET',
-      workoutSetId: lastSquat.id,
-    });
-
+    // The 3-rep squat set was recorded as a rep max when it was logged
     const history = (await call('get', `/lifts/${squat}/history`).expect(200))
       .body as {
       best: { weightKg: number; source: string };
       latest: { reps: number; entry: { weightKg: number } | null }[];
-      entries: { reps: number; weightKg: number; source: string }[];
+      entries: {
+        reps: number;
+        weightKg: number;
+        achievedOn: string;
+        source: string;
+        workoutSetId: string | null;
+      }[];
     };
+    expect(history.entries.filter((e) => e.reps === 3)).toEqual([
+      expect.objectContaining({
+        reps: 3,
+        weightKg: 100,
+        achievedOn: startDate,
+        source: 'LOGGED_SET',
+        workoutSetId: lastSquat.id,
+      }),
+    ]);
     expect(history.best).toMatchObject({
       weightKg: 140,
       source: 'PROGRAM_SETUP',

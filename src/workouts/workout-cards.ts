@@ -44,7 +44,19 @@ export type WorkoutSource = 'manual' | 'coach' | 'program';
 export type WorkoutView = Workout & {
   source: WorkoutSource;
   program: { enrollmentId: string; name: string } | null;
+  hasPb: boolean;
 };
+
+// A set has pb when a non-removed rep max entry is linked to it.
+export type SetView = WorkoutSet & { pb: boolean };
+
+export function setIdsOf(workouts: Workout[]): string[] {
+  return workouts.flatMap((workout) =>
+    (workout.exercises ?? []).flatMap((card) =>
+      (card.sets ?? []).map((set) => set.id),
+    ),
+  );
+}
 
 // Coach-assigned and program workouts: the user logs results, adds sets and
 // sets the status, but can't change the plan or delete the workout.
@@ -83,14 +95,21 @@ export async function programNamesOf(
 }
 
 // Cards by order, then each card's sets by order; the assigning coach is
-// trimmed to id and name; source and program name are added.
+// trimmed to id and name; source, program name and pb flags are added.
 export function toWorkoutView(
   workout: Workout,
   programNames: Map<string, string> = new Map(),
+  pbSetIds: Set<string> = new Set(),
 ): WorkoutView {
   workout.exercises?.sort((a, b) => a.order - b.order);
+  let hasPb = false;
   for (const card of workout.exercises ?? []) {
     card.sets?.sort((a, b) => a.order - b.order);
+    for (const set of card.sets ?? []) {
+      const pb = pbSetIds.has(set.id);
+      (set as SetView).pb = pb;
+      hasPb ||= pb;
+    }
   }
   const coach = workout.assignedBy;
   workout.assignedBy = coach
@@ -102,6 +121,7 @@ export function toWorkoutView(
     program: enrollmentId
       ? { enrollmentId, name: programNames.get(enrollmentId) ?? '' }
       : null,
+    hasPb,
   });
 }
 

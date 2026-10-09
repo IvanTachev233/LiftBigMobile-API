@@ -76,11 +76,21 @@ describe('setupEntries', () => {
 });
 
 describe('latestByReps', () => {
+  let seq = 0;
   const at = (reps: number, achievedOn: string, createdAt: string) => ({
     id: `${reps}-${achievedOn}-${createdAt}`,
     reps,
     achievedOn,
     createdAt: new Date(createdAt),
+    seq: ++seq,
+  });
+
+  it('takes the later inserted of entries with the same date and createdAt', () => {
+    const first = at(1, '2026-09-01', '2026-09-01T10:00:00Z');
+    const second = at(1, '2026-09-01', '2026-09-01T10:00:00Z');
+    expect(latestByReps([first, second], [1])).toEqual([
+      { reps: 1, entry: second },
+    ]);
   });
 
   it('picks the newest entry per rep count', () => {

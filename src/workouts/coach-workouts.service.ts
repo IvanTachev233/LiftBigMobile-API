@@ -21,8 +21,13 @@ import {
   lockWorkout,
   refreshTotal,
   saveCardsInPlace,
+  setIdsOf,
   toWorkoutView,
 } from './workout-cards';
+import {
+  LiftRecordsService,
+  RecordedExercise,
+} from '../lifts/lift-records.service';
 
 // Workouts a coach assigns to their clients. The coach writes the plan only;
 // results and status belong to the client.
@@ -33,7 +38,16 @@ export class CoachWorkoutsService {
     private workoutRepo: Repository<Workout>,
     @InjectRepository(Exercise)
     private exerciseRepo: Repository<Exercise>,
+    private readonly lifts: LiftRecordsService,
   ) {}
+
+  private async toViews(workouts: Workout[]): Promise<Workout[]> {
+    const pbs = await this.lifts.pbSetIds(
+      this.workoutRepo.manager,
+      setIdsOf(workouts),
+    );
+    return workouts.map((workout) => toWorkoutView(workout, undefined, pbs));
+  }
 
   // Checked against the client's current coach in the database, not the
   // caller's token.
@@ -61,7 +75,7 @@ export class CoachWorkoutsService {
       relations: CARD_RELATIONS,
       order: { date: 'DESC' },
     });
-    return workouts.map((workout) => toWorkoutView(workout));
+    return this.toViews(workouts);
   }
 
   async createForClient(
@@ -103,7 +117,8 @@ export class CoachWorkoutsService {
     });
     if (!workout) throw this.notFound(id);
     await this.assertClient(this.workoutRepo.manager, workout.userId, coach);
-    return toWorkoutView(workout);
+    const [view] = await this.toViews([workout]);
+    return view;
   }
 
   // Saves the plan in place by id; results and status are never written.
@@ -126,6 +141,7 @@ export class CoachWorkoutsService {
       if (!workout) throw this.notFound(id);
       await this.assertClient(manager, workout.userId, coach);
 
+      let recorded: RecordedExercise[] = [];
       if (cards !== undefined) {
         const existing = await loadCards(manager, id);
         assertOwnIds(existing, cards, 'planned');
@@ -134,12 +150,17 @@ export class CoachWorkoutsService {
           cards.map((card) => card.exerciseId),
           coach.id,
         );
+        recorded = await this.lifts.recordedExercises(manager, { id });
         await saveCardsInPlace(manager, id, existing, cards, 'planned');
       }
       if (Object.keys(patch).length > 0) {
         await manager.update(Workout, { id }, patch);
       }
       if (cards !== undefined) await refreshTotal(manager, id);
+      // Records under the client, who owns the workout.
+      if (cards !== undefined || patch.date !== undefined) {
+        await this.lifts.reconcileWorkout(manager, id, recorded);
+      }
     });
 
     return this.findOne(id, coach);
@@ -153,7 +174,9 @@ export class CoachWorkoutsService {
       });
       if (!workout) throw this.notFound(id);
       await this.assertClient(manager, workout.userId, coach);
+      const recorded = await this.lifts.recordedExercises(manager, { id });
       await manager.delete(Workout, { id });
+      await this.lifts.recomputeAfterDelete(manager, recorded);
     });
   }
 }

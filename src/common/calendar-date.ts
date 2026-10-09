@@ -29,3 +29,16 @@ export function todayUtc(now: Date = new Date()): string {
 export function dateOf(timestamp: Date): string {
   return format(timestamp.getTime());
 }
+
+// The calendar date of a timestamp column without a time zone (such as
+// workout.date). The driver reads its wall-clock value in the server's
+// zone, so the local date is the stored one.
+export function wallClockDateOf(timestamp: Date): string {
+  return format(
+    Date.UTC(
+      timestamp.getFullYear(),
+      timestamp.getMonth(),
+      timestamp.getDate(),
+    ),
+  );
+}

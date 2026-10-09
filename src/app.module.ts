@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { WorkoutsModule } from './workouts/workouts.module';
 import { ProgramsModule } from './programs/programs.module';
 import { LiftsModule } from './lifts/lifts.module';
+import { PbBackfillModule } from './lifts/pb-backfill.module';
 import { UsersModule } from './users/users.module';
 import { databaseConfig } from './config/database.config';
 
@@ -20,6 +21,7 @@ import { databaseConfig } from './config/database.config';
     WorkoutsModule,
     ProgramsModule,
     LiftsModule,
+    PbBackfillModule,
     UsersModule,
   ],
   controllers: [AppController],

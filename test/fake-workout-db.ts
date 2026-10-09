@@ -313,3 +313,14 @@ export function workoutFixture(
     ],
   };
 }
+
+// LiftRecordsService for specs without rep max entries: nothing is
+// recorded and no set is a PB.
+export function liftRecordsStub() {
+  return {
+    reconcileWorkout: jest.fn(() => Promise.resolve(0)),
+    pbSetIds: jest.fn(() => Promise.resolve(new Set<string>())),
+    recordedExercises: jest.fn(() => Promise.resolve([])),
+    recomputeAfterDelete: jest.fn(() => Promise.resolve()),
+  };
+}

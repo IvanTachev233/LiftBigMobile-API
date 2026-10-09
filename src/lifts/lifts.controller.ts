@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -49,12 +50,14 @@ export class LiftsController {
     return this.lifts.recordManual(req.user, dto);
   }
 
-  @Post('rep-maxes/from-set/:setId')
-  @ApiOperation({ summary: 'Record a logged set as a rep max' })
-  recordFromSet(
-    @Param('setId', ParseUUIDPipe) setId: string,
+  @Delete('rep-maxes/:id')
+  @ApiOperation({
+    summary: 'Remove an own rep max; it no longer counts anywhere',
+  })
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.lifts.recordFromSet(req.user, setId);
+    return this.lifts.remove(req.user, id);
   }
 }
