@@ -27,13 +27,16 @@ import {
   CARD_RELATIONS,
   assertExercisesVisible,
   assertOwnIds,
+  isPlanLocked,
   loadCards,
   lockWorkout,
   markStarted,
+  programNamesOf,
   refreshTotal,
   saveCardsInPlace,
   toWorkoutView,
 } from './workout-cards';
+import { completeEnrollmentIfDone } from '../programs/enrollment-completion';
 
 @Injectable()
 export class WorkoutsService {
@@ -97,14 +100,14 @@ export class WorkoutsService {
     return saved;
   }
 
-  // Own workouts, self-made and assigned.
+  // Own workouts: self-made, assigned and from programs.
   async findAll(user: AuthUser): Promise<Workout[]> {
     const workouts = await this.workoutRepo.find({
       where: { userId: user.id },
       order: { date: 'DESC' },
       relations: CARD_RELATIONS,
     });
-    return workouts.map(toWorkoutView);
+    return this.toViews(workouts);
   }
 
   async findUpcoming(user: AuthUser): Promise<Workout[]> {
@@ -120,7 +123,7 @@ export class WorkoutsService {
       relations: CARD_RELATIONS,
       order: { date: 'ASC' },
     });
-    return workouts.map(toWorkoutView);
+    return this.toViews(workouts);
   }
 
   async findOne(id: string, user: AuthUser): Promise<Workout> {
@@ -131,10 +134,13 @@ export class WorkoutsService {
     if (!workout)
       throw new NotFoundException(`Workout with ID "${id}" not found`);
 
-    return toWorkoutView(workout);
+    const [view] = await this.toViews([workout]);
+    return view;
   }
 
-  // Self-made: every field, cards saved in place by id. Assigned: status only.
+  // Self-made: every field, cards saved in place by id. Assigned or from a
+  // program: status only. Completing the last workout of a program
+  // completes its enrollment.
   async update(
     id: string,
     updateWorkoutDto: UpdateWorkoutDto,
@@ -154,9 +160,11 @@ export class WorkoutsService {
       }
       const changesPlan =
         cards !== undefined || Object.keys(patch).some((k) => k !== 'status');
-      if (workout.assignedById !== null && changesPlan) {
+      if (isPlanLocked(workout) && changesPlan) {
         throw new ForbiddenException(
-          'Only the status of an assigned workout can be changed',
+          workout.programEnrollmentId
+            ? 'Only the status of a program workout can be changed'
+            : 'Only the status of an assigned workout can be changed',
         );
       }
 
@@ -174,6 +182,12 @@ export class WorkoutsService {
         await manager.update(Workout, { id }, patch);
       }
       if (cards !== undefined) await refreshTotal(manager, id);
+      if (
+        workout.programEnrollmentId &&
+        patch.status === WorkoutStatus.COMPLETED
+      ) {
+        await completeEnrollmentIfDone(manager, workout.programEnrollmentId);
+      }
     });
 
     return this.findOne(id, user);
@@ -185,16 +199,18 @@ export class WorkoutsService {
       if (!workout) {
         throw new NotFoundException(`Workout with ID "${id}" not found`);
       }
-      if (workout.assignedById !== null) {
+      if (isPlanLocked(workout)) {
         throw new ForbiddenException(
-          'An assigned workout can only be deleted by the coach',
+          workout.programEnrollmentId
+            ? 'A program workout is removed by abandoning its program'
+            : 'An assigned workout can only be deleted by the coach',
         );
       }
       await manager.delete(Workout, { id });
     });
   }
 
-  // Appends a set to a card of an own workout, self-made or assigned.
+  // Appends a set to a card of any own workout.
   async addSet(
     id: string,
     cardId: string,
@@ -270,5 +286,10 @@ export class WorkoutsService {
       await refreshTotal(manager, id);
       return manager.findOneOrFail(WorkoutSet, { where: { id: setId } });
     });
+  }
+
+  private async toViews(workouts: Workout[]): Promise<Workout[]> {
+    const names = await programNamesOf(this.workoutRepo.manager, workouts);
+    return workouts.map((workout) => toWorkoutView(workout, names));
   }
 }

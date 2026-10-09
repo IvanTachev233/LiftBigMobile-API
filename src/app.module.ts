@@ -5,6 +5,9 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { WorkoutsModule } from './workouts/workouts.module';
+import { ProgramsModule } from './programs/programs.module';
+import { LiftsModule } from './lifts/lifts.module';
+import { UsersModule } from './users/users.module';
 import { databaseConfig } from './config/database.config';
 
 @Module({
@@ -15,6 +18,9 @@ import { databaseConfig } from './config/database.config';
     TypeOrmModule.forRoot(databaseConfig),
     AuthModule,
     WorkoutsModule,
+    ProgramsModule,
+    LiftsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [AppService],

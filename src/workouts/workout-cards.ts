@@ -1,10 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
-import { EntityManager, FindOptionsWhere, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { WorkoutExercise } from './entities/workout-exercise.entity';
 import { WorkoutSet } from './entities/workout-set.entity';
 import { Exercise } from './entities/exercise.entity';
 import { User } from '../auth/user.entity';
+import { ProgramEnrollment } from '../programs/entities/program-enrollment.entity';
 import { isExerciseVisible } from './exercise-visibility.util';
 
 export const CARD_RELATIONS = [
@@ -38,9 +39,55 @@ export interface CardInput {
 // a set may move to another card of the same workout.
 export type CardWriteMode = 'self' | 'planned';
 
+export type WorkoutSource = 'manual' | 'coach' | 'program';
+
+export type WorkoutView = Workout & {
+  source: WorkoutSource;
+  program: { enrollmentId: string; name: string } | null;
+};
+
+// Coach-assigned and program workouts: the user logs results, adds sets and
+// sets the status, but can't change the plan or delete the workout.
+export function isPlanLocked(
+  workout: Pick<Workout, 'assignedById' | 'programEnrollmentId'>,
+): boolean {
+  return Boolean(workout.assignedById) || Boolean(workout.programEnrollmentId);
+}
+
+export function workoutSource(
+  workout: Pick<Workout, 'assignedById' | 'programEnrollmentId'>,
+): WorkoutSource {
+  if (workout.programEnrollmentId) return 'program';
+  if (workout.assignedById) return 'coach';
+  return 'manual';
+}
+
+// Program name by enrollment id for the program workouts among workouts.
+export async function programNamesOf(
+  manager: EntityManager,
+  workouts: Workout[],
+): Promise<Map<string, string>> {
+  const ids = [
+    ...new Set(
+      workouts.flatMap((w) =>
+        w.programEnrollmentId ? [w.programEnrollmentId] : [],
+      ),
+    ),
+  ];
+  if (ids.length === 0) return new Map();
+  const enrollments = await manager.find(ProgramEnrollment, {
+    where: { id: In(ids) },
+    relations: { program: true },
+  });
+  return new Map(enrollments.map((e) => [e.id, e.program.name]));
+}
+
 // Cards by order, then each card's sets by order; the assigning coach is
-// trimmed to id and name.
-export function toWorkoutView(workout: Workout): Workout {
+// trimmed to id and name; source and program name are added.
+export function toWorkoutView(
+  workout: Workout,
+  programNames: Map<string, string> = new Map(),
+): WorkoutView {
   workout.exercises?.sort((a, b) => a.order - b.order);
   for (const card of workout.exercises ?? []) {
     card.sets?.sort((a, b) => a.order - b.order);
@@ -49,7 +96,13 @@ export function toWorkoutView(workout: Workout): Workout {
   workout.assignedBy = coach
     ? ({ id: coach.id, name: coach.name } as User)
     : null;
-  return workout;
+  const enrollmentId = workout.programEnrollmentId;
+  return Object.assign(workout, {
+    source: workoutSource(workout),
+    program: enrollmentId
+      ? { enrollmentId, name: programNames.get(enrollmentId) ?? '' }
+      : null,
+  });
 }
 
 // Locks the bare workout row until the transaction ends. Relations are not

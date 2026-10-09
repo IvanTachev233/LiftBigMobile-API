@@ -61,7 +61,7 @@ export class CoachWorkoutsService {
       relations: CARD_RELATIONS,
       order: { date: 'DESC' },
     });
-    return workouts.map(toWorkoutView);
+    return workouts.map((workout) => toWorkoutView(workout));
   }
 
   async createForClient(

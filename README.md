@@ -39,6 +39,7 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `NODE_ENV` | unset | `production` turns on SSL for the DB connection and turns off automatic schema sync (unless `TYPEORM_SYNC=true`) |
 | `TYPEORM_SYNC` | unset | `true` forces TypeORM `synchronize` on, even in production |
 | `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
+| `SEED_PROGRAMS` | unset | On every start the API adds any missing sports, their required lifts, the global exercises they use and one published sample program per sport. `false` skips this |
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 
 Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT` and `CORS_ORIGINS`. `.env` is gitignored.
