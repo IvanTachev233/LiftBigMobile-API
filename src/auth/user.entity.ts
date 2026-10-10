@@ -6,6 +6,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { WeightUnit } from '../common/weight-unit';
 import { Workout } from '../workouts/entities/workout.entity';
 
 @Entity()
@@ -24,6 +25,9 @@ export class User {
 
   @Column({ default: 'CLIENT' })
   role: 'COACH' | 'CLIENT';
+
+  @Column({ type: 'enum', enum: WeightUnit, default: WeightUnit.KG })
+  weightUnit: WeightUnit;
 
   @Column({ nullable: true })
   coachId: string | null;

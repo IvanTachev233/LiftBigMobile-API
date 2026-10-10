@@ -17,8 +17,10 @@ import {
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { Exercise } from './entities/exercise.entity';
 import { AuthUser } from '../auth/auth-user.interface';
+import { LiftRecordsService } from '../lifts/lift-records.service';
 import {
   createFakeWorkoutDb,
+  liftRecordsStub,
   FakeWorkoutDb,
   workoutFixture,
 } from '../../test/fake-workout-db';
@@ -178,6 +180,7 @@ describe('WorkoutsService', () => {
         WorkoutsService,
         { provide: getRepositoryToken(Workout), useValue: fake.workoutRepo },
         { provide: getRepositoryToken(Exercise), useValue: exerciseRepo },
+        { provide: LiftRecordsService, useValue: liftRecordsStub() },
       ],
     }).compile();
 

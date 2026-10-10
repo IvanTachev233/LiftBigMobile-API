@@ -9,6 +9,10 @@ import { WorkoutsService } from './workouts.service';
 import { CoachWorkoutsService } from './coach-workouts.service';
 import { CoachCardInput } from './dto/coach-workout.dto';
 import { lockWorkout } from './workout-cards';
+import { programEntities } from '../programs/entities';
+import { LiftRecordsService } from '../lifts/lift-records.service';
+import { RepMaxEntry } from '../lifts/entities/rep-max-entry.entity';
+import { UserBestLift } from '../lifts/entities/user-best-lift.entity';
 
 // Runs only against a scratch Postgres database named in
 // WORKOUT_LOCK_SPEC_DB; the schema is dropped and recreated from the
@@ -39,18 +43,30 @@ describeDb('workout writes on Postgres', () => {
       username: process.env.DB_USERNAME || 'liftbig',
       password: process.env.DB_PASSWORD || 'password123',
       database: DB_NAME,
-      entities: [Workout, WorkoutExercise, WorkoutSet, Exercise, User],
+      entities: [
+        Workout,
+        WorkoutExercise,
+        WorkoutSet,
+        Exercise,
+        User,
+        ...programEntities,
+        RepMaxEntry,
+        UserBestLift,
+      ],
       synchronize: true,
       dropSchema: true,
     });
     await ds.initialize();
+    const lifts = new LiftRecordsService(ds);
     workouts = new WorkoutsService(
       ds.getRepository(Workout),
       ds.getRepository(Exercise),
+      lifts,
     );
     coachWorkouts = new CoachWorkoutsService(
       ds.getRepository(Workout),
       ds.getRepository(Exercise),
+      lifts,
     );
 
     const users = ds.getRepository(User);

@@ -55,4 +55,8 @@ export class Exercise {
 
   @Column({ type: 'varchar', nullable: true })
   imageUrl: string | null;
+
+  // Whether rep maxes can be recorded for this exercise.
+  @Column({ type: 'boolean', default: false })
+  isMaxTrackable: boolean;
 }

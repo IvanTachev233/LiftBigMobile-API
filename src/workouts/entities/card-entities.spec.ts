@@ -4,13 +4,21 @@ import { WorkoutExercise } from './workout-exercise.entity';
 import { WorkoutSet } from './workout-set.entity';
 import { Exercise } from './exercise.entity';
 import { User } from '../../auth/user.entity';
+import { programEntities } from '../../programs/entities';
 
 // Builds entity metadata without connecting to a database, so the FK /
 // column shape of the card entities can be asserted directly.
 async function buildMetadata(): Promise<DataSource> {
   const dataSource = new DataSource({
     type: 'postgres',
-    entities: [Workout, WorkoutExercise, WorkoutSet, Exercise, User],
+    entities: [
+      Workout,
+      WorkoutExercise,
+      WorkoutSet,
+      Exercise,
+      User,
+      ...programEntities,
+    ],
   });
   await (
     dataSource as unknown as { buildMetadatas(): Promise<void> }
