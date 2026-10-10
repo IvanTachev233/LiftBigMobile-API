@@ -18,11 +18,18 @@ interface SetView {
   pb: boolean;
 }
 
+type PbBars = Record<'1' | '2' | '3', number | null>;
+
 interface WorkoutView {
   id: string;
   status: string;
   hasPb: boolean;
-  exercises: { id: string; exerciseId: string; sets: SetView[] }[];
+  exercises: {
+    id: string;
+    exerciseId: string;
+    sets: SetView[];
+    pbBars?: PbBars;
+  }[];
 }
 
 interface SetResponse extends SetView {
@@ -613,6 +620,102 @@ describe('Personal bests (e2e)', () => {
       ).body as { active: { maxesSnapshot: Record<string, number> } };
       expect(active.maxesSnapshot[squat.id]).toBe(140);
       expect(await best()).toBeNull();
+    });
+  });
+
+  describe('pb bars', () => {
+    const barsOf = async (workoutId: string) =>
+      (
+        (await as(client).get(`/workouts/${workoutId}`).expect(200))
+          .body as WorkoutView
+      ).exercises.map((card) => card.pbBars);
+
+    it('gives the heaviest earlier entry per rep count, null where there is none', async () => {
+      await manual(1, 100, '2026-09-01');
+      await manual(3, 90, '2026-09-02');
+      await manual(1, 95, '2026-09-03');
+      const workoutId = await newWorkout('2026-09-10');
+      await saveSquat(workoutId, [single(50, null)]);
+      expect(await barsOf(workoutId)).toEqual([{ 1: 100, 2: null, 3: 90 }]);
+    });
+
+    it("leaves out later-dated, removed and other users' entries", async () => {
+      await manual(1, 100, '2026-09-01');
+      await manual(1, 150, '2026-09-20');
+      await manual(2, 130, '2026-09-05');
+      const removed = (await history()).entries.find((e) => e.reps === 2)!;
+      await as(client).delete(`/lifts/rep-maxes/${removed.id}`).expect(200);
+      const other = await registerAndLogin(app);
+      await as(other)
+        .post('/lifts/rep-maxes', {
+          exerciseId: squat.id,
+          reps: 3,
+          weightKg: 200,
+          achievedOn: '2026-09-01',
+        })
+        .expect(201);
+
+      const workoutId = await newWorkout('2026-09-10');
+      await saveSquat(workoutId, [single(50, null)]);
+      expect(await barsOf(workoutId)).toEqual([{ 1: 100, 2: null, 3: null }]);
+    });
+
+    it("leaves out this workout's own PB set and counts a same-day entry of another workout", async () => {
+      await manual(1, 100, '2026-09-01');
+      const sameDay = await newWorkout('2026-09-10');
+      await saveSquat(sameDay, [single(110)]);
+
+      const workoutId = await newWorkout('2026-09-10');
+      const saved = await saveSquat(workoutId, [single(120)]);
+      expect(saved.exercises[0].sets[0].pb).toBe(true);
+      expect(saved.exercises[0].pbBars).toEqual({ 1: 110, 2: null, 3: null });
+      expect(await barsOf(workoutId)).toEqual([{ 1: 110, 2: null, 3: null }]);
+      expect(await barsOf(sameDay)).toEqual([{ 1: 120, 2: null, 3: null }]);
+    });
+
+    it('gives every card of the PATCH response bars, all null with no entries', async () => {
+      const workoutId = await newWorkout('2026-09-10');
+      const saved = (
+        await as(client)
+          .patch(`/workouts/${workoutId}`, {
+            exercises: [
+              { exerciseId: squat.id, order: 1, sets: [single(50, null)] },
+              { exerciseId: row.id, order: 2, sets: [single(40, null)] },
+            ],
+          })
+          .expect(200)
+      ).body as WorkoutView;
+      expect(saved.exercises.map((card) => card.pbBars)).toEqual([
+        { 1: null, 2: null, 3: null },
+        { 1: null, 2: null, 3: null },
+      ]);
+    });
+
+    it('leaves lists and set responses without bars', async () => {
+      await manual(1, 100, '2026-09-01');
+      const workoutId = await newWorkout(addDays(todayUtc(), 2));
+      const saved = await saveSquat(workoutId, [single(50, null)]);
+      const [card] = saved.exercises;
+      for (const path of ['/workouts', '/workouts/upcoming']) {
+        const list = (await as(client).get(path).expect(200))
+          .body as WorkoutView[];
+        const listed = list.find((w) => w.id === workoutId)!;
+        expect(listed.exercises[0]).not.toHaveProperty('pbBars');
+      }
+      const result = (
+        await as(client)
+          .patch(`/workouts/${workoutId}/sets/${card.sets[0].id}`, {
+            made: true,
+          })
+          .expect(200)
+      ).body as object;
+      expect(result).not.toHaveProperty('pbBars');
+      const added = (
+        await as(client)
+          .post(`/workouts/${workoutId}/cards/${card.id}/sets`, { reps: 1 })
+          .expect(201)
+      ).body as object;
+      expect(added).not.toHaveProperty('pbBars');
     });
   });
 

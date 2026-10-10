@@ -320,6 +320,7 @@ export function liftRecordsStub() {
   return {
     reconcileWorkout: jest.fn(() => Promise.resolve(0)),
     pbSetIds: jest.fn(() => Promise.resolve(new Set<string>())),
+    pbBars: jest.fn(() => Promise.resolve(new Map())),
     recordedExercises: jest.fn(() => Promise.resolve([])),
     recomputeAfterDelete: jest.fn(() => Promise.resolve()),
   };

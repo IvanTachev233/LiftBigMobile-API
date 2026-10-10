@@ -21,6 +21,7 @@ import {
 } from '../workouts/exercise-visibility.util';
 import { latestByReps } from './domain/best-lift';
 import {
+  MAX_PB_REPS,
   planReconcile,
   qualifyingLift,
   recomputeBest,
@@ -44,6 +45,9 @@ export interface NewLiftEntry {
 
 // Weights are stored to 2 decimals.
 const roundKg = (kg: number) => Math.round(kg * 100) / 100;
+
+// Heaviest weight to beat per rep count, null where there is none.
+export type PbBars = Record<'1' | '2' | '3', number | null>;
 
 export interface RecordedExercise {
   userId: string;
@@ -250,6 +254,51 @@ export class LiftRecordsService {
       where: { workoutSetId: In(setIds), removedAt: IsNull() },
     });
     return new Set(entries.map((e) => e.workoutSetId!));
+  }
+
+  // Per exercise, the heaviest non-removed 1-3 rep entries of the user
+  // dated on or before achievedOn, leaving out entries linked to
+  // excludeSetIds (the sets of the workout being viewed).
+  async pbBars(
+    manager: EntityManager,
+    userId: string,
+    exerciseIds: string[],
+    achievedOn: string,
+    excludeSetIds: string[],
+  ): Promise<Map<string, PbBars>> {
+    const bars = new Map<string, PbBars>(
+      exerciseIds.map((id) => [id, { 1: null, 2: null, 3: null }]),
+    );
+    if (exerciseIds.length === 0) return bars;
+    const query = manager
+      .createQueryBuilder(RepMaxEntry, 'entry')
+      .select('entry.exerciseId', 'exerciseId')
+      .addSelect('entry.reps', 'reps')
+      .addSelect('MAX(entry.weightKg)', 'weightKg')
+      .where('entry.userId = :userId', { userId })
+      .andWhere('entry.exerciseId IN (:...exerciseIds)', { exerciseIds })
+      .andWhere('entry.reps BETWEEN 1 AND :maxReps', { maxReps: MAX_PB_REPS })
+      .andWhere('entry.removedAt IS NULL')
+      .andWhere('entry.achievedOn <= :achievedOn', { achievedOn })
+      .groupBy('entry.exerciseId')
+      .addGroupBy('entry.reps');
+    if (excludeSetIds.length > 0) {
+      query.andWhere(
+        '(entry.workoutSetId IS NULL OR entry.workoutSetId NOT IN (:...excludeSetIds))',
+        { excludeSetIds },
+      );
+    }
+    const rows = await query.getRawMany<{
+      exerciseId: string;
+      reps: number;
+      weightKg: string;
+    }>();
+    for (const row of rows) {
+      const bar = bars.get(row.exerciseId);
+      if (bar)
+        bar[String(row.reps) as keyof PbBars] = roundKg(Number(row.weightKg));
+    }
+    return bars;
   }
 
   // Marks an own entry removed and recomputes the best.

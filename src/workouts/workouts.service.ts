@@ -49,6 +49,7 @@ import {
   LiftRecordsService,
   RecordedExercise,
 } from '../lifts/lift-records.service';
+import { wallClockDateOf } from '../common/calendar-date';
 
 // A set returned by a set write, with the pb flags of its whole workout so
 // the caller needs no reload.
@@ -145,6 +146,7 @@ export class WorkoutsService {
     return this.toViews(workouts);
   }
 
+  // The single workout view also gives each card its pbBars.
   async findOne(id: string, user: AuthUser): Promise<Workout> {
     const workout = await this.workoutRepo.findOne({
       where: { id, userId: user.id },
@@ -154,6 +156,16 @@ export class WorkoutsService {
       throw new NotFoundException(`Workout with ID "${id}" not found`);
 
     const [view] = await this.toViews([workout]);
+    const bars = await this.lifts.pbBars(
+      this.workoutRepo.manager,
+      workout.userId,
+      [...new Set(view.exercises.map((card) => card.exerciseId))],
+      wallClockDateOf(workout.date),
+      setIdsOf([workout]),
+    );
+    for (const card of view.exercises) {
+      Object.assign(card, { pbBars: bars.get(card.exerciseId) });
+    }
     return view;
   }
 
