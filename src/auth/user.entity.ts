@@ -6,6 +6,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { DEFAULT_REST_SECONDS } from '../common/rest-seconds';
 import { WeightUnit } from '../common/weight-unit';
 import { Workout } from '../workouts/entities/workout.entity';
 
@@ -28,6 +29,10 @@ export class User {
 
   @Column({ type: 'enum', enum: WeightUnit, default: WeightUnit.KG })
   weightUnit: WeightUnit;
+
+  // Default rest between sets in the logger, in seconds
+  @Column({ type: 'int', default: DEFAULT_REST_SECONDS })
+  restSeconds: number;
 
   @Column({ nullable: true })
   coachId: string | null;

@@ -26,7 +26,7 @@ export class UsersController {
   }
 
   @Patch('me')
-  @ApiOperation({ summary: "Change the caller's weight unit" })
+  @ApiOperation({ summary: "Change the caller's weight unit or rest time" })
   updateMe(@Body() dto: UpdateMeDto, @Request() req: AuthenticatedRequest) {
     return this.users.updateMe(req.user, dto);
   }
