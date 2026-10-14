@@ -152,13 +152,21 @@ describe('Coach client summary (e2e)', () => {
   });
 
   it('reads every client in one query', async () => {
-    const queries = jest.spyOn(PostgresQueryRunner.prototype, 'query');
+    const spy = jest.spyOn(PostgresQueryRunner.prototype, 'query');
+    // The token check reads the caller's token version on every request
+    const queries = {
+      mockClear: () => spy.mockClear(),
+      calls: () =>
+        spy.mock.calls.filter(
+          ([sql]) => !String(sql).includes('"tokenVersion"'),
+        ),
+    };
     const first = await clientOf(coach);
     await addWorkout(first, 'Day 1', '2026-10-05', WorkoutStatus.COMPLETED);
 
     queries.mockClear();
     await clients();
-    expect(queries).toHaveBeenCalledTimes(1);
+    expect(queries.calls()).toHaveLength(1);
 
     for (let i = 0; i < 3; i++) {
       const client = await clientOf(coach);
@@ -167,7 +175,7 @@ describe('Coach client summary (e2e)', () => {
     }
     queries.mockClear();
     expect(await clients()).toHaveLength(4);
-    expect(queries).toHaveBeenCalledTimes(1);
+    expect(queries.calls()).toHaveLength(1);
   });
 
   it('is for coaches only', async () => {

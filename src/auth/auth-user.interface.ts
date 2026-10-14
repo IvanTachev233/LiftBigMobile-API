@@ -8,6 +8,8 @@ export interface JwtPayload {
   name: string | null;
   role: User['role'];
   coachId: string | null;
+  // The user's token version when signed; tokens from before it existed have none
+  ver?: number;
 }
 
 // What JwtStrategy.validate() attaches to req.user

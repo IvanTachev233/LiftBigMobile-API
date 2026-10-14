@@ -9,6 +9,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { JwtPayload } from './auth-user.interface';
 import { User } from './user.entity';
 import { Invite, InviteStatus } from './invite.entity';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
@@ -38,6 +39,24 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  /** An access token carrying the user's current token version */
+  signToken(
+    user: Pick<
+      User,
+      'id' | 'email' | 'name' | 'role' | 'coachId' | 'tokenVersion'
+    >,
+  ): string {
+    const payload: JwtPayload = {
+      email: user.email,
+      name: user.name,
+      sub: user.id,
+      role: user.role,
+      coachId: user.coachId,
+      ver: user.tokenVersion,
+    };
+    return this.jwtService.sign(payload);
+  }
+
   async register(
     registerDto: RegisterDto,
   ): Promise<{ user: User; token: string }> {
@@ -60,38 +79,21 @@ export class AuthService {
       throw error;
     }
 
-    const payload = {
-      email: user.email,
-      name: user.name,
-      sub: user.id,
-      role: user.role,
-      coachId: user.coachId,
-    };
+    const token = this.signToken({ ...user, tokenVersion: 0 });
     delete (user as { passwordHash?: string }).passwordHash;
-    return {
-      user,
-      token: this.jwtService.sign(payload),
-    };
+    return { user, token };
   }
 
   async login(loginDto: LoginDto) {
     const user = await this.usersRepository
       .createQueryBuilder('user')
       .addSelect('user.passwordHash')
+      .addSelect('user.tokenVersion')
       .where('user.email = :email', { email: loginDto.email })
       .getOne();
 
     if (user && (await bcrypt.compare(loginDto.password, user.passwordHash))) {
-      const payload = {
-        email: user.email,
-        name: user.name,
-        sub: user.id,
-        role: user.role,
-        coachId: user.coachId,
-      };
-      return {
-        access_token: this.jwtService.sign(payload),
-      };
+      return { access_token: this.signToken(user) };
     }
     throw new UnauthorizedException('Invalid credentials');
   }
@@ -241,18 +243,14 @@ export class AuthService {
     invite.status = InviteStatus.ACCEPTED;
     await this.inviteRepository.save(invite);
 
-    const payload = {
-      email: client.email,
-      name: client.name,
-      sub: client.id,
-      role: client.role,
-      coachId: client.coachId,
-    };
-
+    const { tokenVersion } = await this.usersRepository.findOneOrFail({
+      where: { id: client.id },
+      select: { id: true, tokenVersion: true },
+    });
     delete (client as { passwordHash?: string }).passwordHash;
     return {
       user: client,
-      access_token: this.jwtService.sign(payload),
+      access_token: this.signToken({ ...client, tokenVersion }),
     };
   }
 

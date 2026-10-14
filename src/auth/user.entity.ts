@@ -34,6 +34,17 @@ export class User {
   @Column({ type: 'int', default: DEFAULT_REST_SECONDS })
   restSeconds: number;
 
+  // Signed into access tokens; raising it revokes every earlier token
+  @Column({ type: 'int', default: 0, select: false })
+  tokenVersion: number;
+
+  // Wrong current passwords on Change password since the last success or lock
+  @Column({ type: 'int', default: 0, select: false })
+  failedPasswordAttempts: number;
+
+  @Column({ type: 'timestamp', nullable: true, select: false })
+  passwordLockedUntil: Date | null;
+
   @Column({ nullable: true })
   coachId: string | null;
 
