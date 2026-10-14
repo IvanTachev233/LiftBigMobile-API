@@ -97,6 +97,7 @@ export class WorkoutsService {
       name: dto.name,
       description: dto.description,
       bodyPart: dto.bodyPart,
+      category: dto.category ?? null,
       videoUrl: dto.videoUrl ?? null,
       createdById: user.id,
     });

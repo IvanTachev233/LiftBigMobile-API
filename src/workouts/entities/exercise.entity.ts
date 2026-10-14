@@ -40,6 +40,15 @@ export class Exercise {
   })
   bodyPart: BodyPart;
 
+  // Movement family shown in the exercise picker (Olympic, Squat, Press,
+  // Pull); set by the seeder for global exercises, null otherwise
+  @Column({ type: 'varchar', nullable: true })
+  category: string | null;
+
+  // e.g. Barbell; set by the seeder for global exercises, null otherwise
+  @Column({ type: 'varchar', nullable: true })
+  equipment: string | null;
+
   // null = global, visible to everyone. Otherwise the coach who created it,
   // visible to that coach and their clients. A coach who owns exercises
   // can't be deleted.

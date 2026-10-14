@@ -22,6 +22,34 @@ export const SEED_EXERCISES: { name: string; bodyPart: BodyPart }[] = [
   { name: 'Barbell Row', bodyPart: BodyPart.BACK },
 ];
 
+// Category and equipment of the global exercises by name, including globals
+// added by migrations rather than SEED_EXERCISES.
+export const GLOBAL_EXERCISE_TAGS: [
+  name: string,
+  category: string,
+  equipment: string,
+][] = [
+  ['Back Squat', 'Squat', 'Barbell'],
+  ['Front Squat', 'Squat', 'Barbell'],
+  ['Pause Squat', 'Squat', 'Barbell'],
+  ['Clean', 'Olympic', 'Barbell'],
+  ['Jerk', 'Olympic', 'Barbell'],
+  ['Clean and Jerk', 'Olympic', 'Barbell'],
+  ['Power Clean', 'Olympic', 'Barbell'],
+  ['Power Jerk', 'Olympic', 'Barbell'],
+  ['Power Clean and Jerk', 'Olympic', 'Barbell'],
+  ['Power Clean and Power Jerk', 'Olympic', 'Barbell'],
+  ['Snatch', 'Olympic', 'Barbell'],
+  ['Power Snatch', 'Olympic', 'Barbell'],
+  ['Clean Pull', 'Olympic', 'Barbell'],
+  ['Snatch Pull', 'Olympic', 'Barbell'],
+  ['Push Press', 'Press', 'Barbell'],
+  ['Bench Press', 'Press', 'Barbell'],
+  ['Close-Grip Bench Press', 'Press', 'Barbell'],
+  ['Deadlift', 'Pull', 'Barbell'],
+  ['Barbell Row', 'Pull', 'Barbell'],
+];
+
 // Sports in tab order; each lift is [label, exercise name].
 export const SEED_SPORTS: { name: string; lifts: [string, string][] }[] = [
   {
