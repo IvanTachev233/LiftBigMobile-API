@@ -12,8 +12,21 @@ import { Repository } from 'typeorm';
 import { User } from './user.entity';
 import { Invite, InviteStatus } from './invite.entity';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { Workout, WorkoutStatus } from '../workouts/entities/workout.entity';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
+
+export interface ClientSummary {
+  id: string;
+  name: string | null;
+  email: string;
+  role: User['role'];
+  // Workouts this coach assigned the client, and how many are completed
+  assignedCount: number;
+  completedCount: number;
+  // The newest of those the client started (in progress or completed)
+  lastWorkout: { date: Date; name: string } | null;
+}
 
 @Injectable()
 export class AuthService {
@@ -83,11 +96,55 @@ export class AuthService {
     throw new UnauthorizedException('Invalid credentials');
   }
 
-  async getClients(coachId: string): Promise<User[]> {
-    return this.usersRepository.find({
-      where: { coachId },
-      select: ['id', 'name', 'email', 'role'],
-    });
+  // The coach's clients with a summary of the workouts this coach assigned
+  // them, in one grouped query. The last workout is the newest started one
+  // (by date, then the later start); both arrays share one order, so its
+  // date and name come from the same row.
+  async getClients(coachId: string): Promise<ClientSummary[]> {
+    const newest =
+      'ORDER BY workout.date DESC, workout.startedAt DESC NULLS LAST, workout.id';
+    const started = 'FILTER (WHERE workout.status <> :planned)';
+    const rows = await this.usersRepository
+      .createQueryBuilder('user')
+      .leftJoin(
+        Workout,
+        'workout',
+        'workout.userId = user.id AND workout.assignedById = :coachId',
+      )
+      .select('user.id', 'id')
+      .addSelect('user.name', 'name')
+      .addSelect('user.email', 'email')
+      .addSelect('user.role', 'role')
+      .addSelect('COUNT(workout.id)::int', 'assignedCount')
+      .addSelect(
+        '(COUNT(workout.id) FILTER (WHERE workout.status = :completed))::int',
+        'completedCount',
+      )
+      .addSelect(
+        `(ARRAY_AGG(workout.date ${newest}) ${started})[1]`,
+        'lastDate',
+      )
+      .addSelect(
+        `(ARRAY_AGG(workout.name ${newest}) ${started})[1]`,
+        'lastName',
+      )
+      .where('user.coachId = :coachId', { coachId })
+      .setParameters({
+        completed: WorkoutStatus.COMPLETED,
+        planned: WorkoutStatus.PLANNED,
+      })
+      .groupBy('user.id')
+      .getRawMany<
+        Omit<ClientSummary, 'lastWorkout'> & {
+          lastDate: Date | null;
+          lastName: string | null;
+        }
+      >();
+    return rows.map(({ lastDate, lastName, ...client }) => ({
+      ...client,
+      lastWorkout:
+        lastDate && lastName ? { date: lastDate, name: lastName } : null,
+    }));
   }
 
   async createInvite(coachId: string, clientEmail: string): Promise<Invite> {
