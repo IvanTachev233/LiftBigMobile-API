@@ -79,6 +79,16 @@ export class CoachCardInput {
   @IsUUID()
   supersetGroup?: string | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'Note for the athlete; absent keeps it, null or blank clears it',
+  })
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+
   @ApiProperty({ type: () => [CoachSetInput] })
   @IsArray()
   @ValidateNested({ each: true })
