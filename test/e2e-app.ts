@@ -5,10 +5,13 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
+import { InMemoryMailTransport } from '../src/mail/in-memory-mail.transport';
+import { MailService } from '../src/mail/mail.service';
 import { E2E_DATABASE, e2eDataSourceOptions } from './e2e-database';
 
 // Boots the full AppModule on the e2e database, with the same global pipe
 // as main.ts. The schema is rebuilt from scratch unless dropSchema is false.
+// Mails are kept in memory; read them with sentMails(app).
 export async function createE2eApp({
   dropSchema = true,
 }: { dropSchema?: boolean } = {}): Promise<INestApplication<App>> {
@@ -25,6 +28,8 @@ export async function createE2eApp({
         return new DataSource(options).initialize();
       },
     })
+    .overrideProvider(MailService)
+    .useValue(new InMemoryMailTransport())
     .compile();
 
   const app = moduleRef.createNestApplication<INestApplication<App>>();
@@ -34,6 +39,11 @@ export async function createE2eApp({
   // can hold the same port.
   await app.listen(0, '127.0.0.1');
   return app;
+}
+
+// Every mail the app sent, oldest first
+export function sentMails(app: INestApplication<App>): InMemoryMailTransport {
+  return app.get(MailService);
 }
 
 export interface E2eUser {

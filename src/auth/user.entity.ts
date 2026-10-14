@@ -45,6 +45,10 @@ export class User {
   @Column({ type: 'timestamp', nullable: true, select: false })
   passwordLockedUntil: Date | null;
 
+  // When the user entered a code mailed to this address; null until then
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerifiedAt: Date | null;
+
   @Column({ nullable: true })
   coachId: string | null;
 
