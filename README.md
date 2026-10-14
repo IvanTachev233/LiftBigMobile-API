@@ -43,8 +43,10 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 | `MAIL_PROVIDER_KEY` | unset | Resend API key for sign-up and password reset codes (set as a Cloud Run secret). Unset: mails, codes included, are written to the log instead of sent |
 | `MAIL_FROM` | unset | Sender for those mails, e.g. `LiftBig <codes@your-domain>` on a domain verified in Resend. Required when `MAIL_PROVIDER_KEY` is set; the API refuses to start without it |
+| `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` page. Unset: the page shows `[OPERATOR NAME]` |
+| `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` page. Unset: the page shows `[CONTACT EMAIL]` |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY` and `MAIL_FROM`. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
 
 ## Tests and checks
 

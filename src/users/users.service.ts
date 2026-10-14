@@ -4,10 +4,12 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { EntityManager, Repository } from 'typeorm';
+import { randomUUID } from 'node:crypto';
+import { EntityManager, EntityNotFoundError, Repository } from 'typeorm';
 import { AuthUser } from '../auth/auth-user.interface';
 import { AuthService } from '../auth/auth.service';
 import {
@@ -89,6 +91,49 @@ export class UsersService {
     });
     throwOnFailedCheck(outcome, 'Password is incorrect');
   }
+
+  /**
+   * deleteAccount for a verified email, for the public deletion page. Sends
+   * no mail. Unknown and unverified emails and wrong passwords all get the
+   * same 401, so the answer doesn't show whether an account exists; wrong
+   * passwords still count towards the Change password lock (429).
+   */
+  async deleteAccountWithCredentials(
+    email: string,
+    password: string,
+  ): Promise<void> {
+    const user = await this.users.findOne({
+      where: { email },
+      select: { id: true, emailVerifiedAt: true },
+    });
+    if (!user?.emailVerifiedAt) {
+      // Takes as long as a real password check
+      await bcrypt.compare(password, await unmatchedHash);
+      throw wrongCredentials();
+    }
+    try {
+      await this.deleteAccount(user.id, password);
+    } catch (error) {
+      // A wrong password, or the account went in the meantime
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof EntityNotFoundError
+      ) {
+        throw wrongCredentials();
+      }
+      throw error;
+    }
+  }
+}
+
+// Compared against when there is no account, so it never matches in practice
+const unmatchedHash = bcrypt.hash(randomUUID(), 10);
+
+function wrongCredentials(): UnauthorizedException {
+  return new UnauthorizedException({
+    statusCode: HttpStatus.UNAUTHORIZED,
+    message: 'Email or password is incorrect',
+  });
 }
 
 type PasswordCheck =
