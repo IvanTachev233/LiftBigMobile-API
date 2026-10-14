@@ -2,7 +2,6 @@ import { Logger } from '@nestjs/common';
 import { createMailTransport } from './mail-transport.factory';
 import { InMemoryMailTransport } from './in-memory-mail.transport';
 import { LogMailTransport } from './log-mail.transport';
-import { MailtrapMailTransport } from './mailtrap-mail.transport';
 import { ResendMailTransport } from './resend-mail.transport';
 
 const env =
@@ -20,31 +19,6 @@ describe('createMailTransport', () => {
       env({ MAIL_PROVIDER_KEY: 're_x', MAIL_FROM: 'LiftBig <a@b.c>' }),
     );
     expect(transport).toBeInstanceOf(ResendMailTransport);
-  });
-
-  it('uses the Mailtrap sandbox when MAILTRAP_API_TOKEN is set, even with a Resend key', () => {
-    const transport = createMailTransport(
-      env({
-        MAILTRAP_API_TOKEN: 'mt_x',
-        MAILTRAP_INBOX_ID: '1',
-        MAIL_PROVIDER_KEY: 're_x',
-        MAIL_FROM: 'LiftBig <a@b.c>',
-      }),
-    );
-    expect(transport).toBeInstanceOf(MailtrapMailTransport);
-  });
-
-  it('refuses a Mailtrap token without an inbox or a sender', () => {
-    expect(() =>
-      createMailTransport(
-        env({ MAILTRAP_API_TOKEN: 'mt_x', MAIL_FROM: 'a@b.c' }),
-      ),
-    ).toThrow(/MAILTRAP_INBOX_ID/);
-    expect(() =>
-      createMailTransport(
-        env({ MAILTRAP_API_TOKEN: 'mt_x', MAILTRAP_INBOX_ID: '1' }),
-      ),
-    ).toThrow(/MAIL_FROM/);
   });
 
   it('writes mails to the log without a key', () => {

@@ -42,11 +42,9 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `SEED_PROGRAMS` | unset | On every start the API adds any missing sports, their required lifts, the global exercises they use and one published sample program per sport. `false` skips this |
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 | `MAIL_PROVIDER_KEY` | unset | Resend API key for sign-up and password reset codes (set as a Cloud Run secret). Unset: mails, codes included, are written to the log instead of sent |
-| `MAIL_FROM` | unset | Sender for those mails, e.g. `LiftBig <codes@your-domain>` on a domain verified in Resend. Required when `MAIL_PROVIDER_KEY` or `MAILTRAP_API_TOKEN` is set; the API refuses to start without it |
-| `MAILTRAP_API_TOKEN` | unset | Local testing only: delivers mails into a Mailtrap sandbox inbox instead (wins over `MAIL_PROVIDER_KEY`). An API token from Mailtrap, not the SMTP password |
-| `MAILTRAP_INBOX_ID` | unset | The sandbox inbox id; required with `MAILTRAP_API_TOKEN` |
+| `MAIL_FROM` | unset | Sender for those mails, e.g. `LiftBig <codes@your-domain>` on a domain verified in Resend. Required when `MAIL_PROVIDER_KEY` is set; the API refuses to start without it |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `MAILTRAP_*` pair. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY` and `MAIL_FROM`. `.env` is gitignored.
 
 ## Tests and checks
 
