@@ -41,3 +41,39 @@ export class LoginDto {
   @IsString()
   password: string;
 }
+
+export class VerifyEmailDto {
+  @IsEmail()
+  email: string;
+
+  // Checked by the code service; a malformed code counts as a wrong one
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  code: string;
+}
+
+export class ResendVerificationDto {
+  @IsEmail()
+  email: string;
+}
+
+export class ForgotPasswordDto {
+  @IsEmail()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @IsEmail()
+  email: string;
+
+  // Checked by the code service; a malformed code counts as a wrong one
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  code: string;
+
+  @IsString()
+  @MinLength(6)
+  newPassword: string;
+}

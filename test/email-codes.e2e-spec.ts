@@ -6,7 +6,12 @@ import {
   EmailCodePurpose,
 } from '../src/email-codes/email-code.entity';
 import { EmailCodeService } from '../src/email-codes/email-code.service';
-import { createE2eApp, E2eUser, registerAndLogin, sentMails } from './e2e-app';
+import {
+  createE2eApp,
+  createExistingUser,
+  E2eUser,
+  sentMails,
+} from './e2e-app';
 
 // The service on the real schema: locks, enum, limits and the cascade.
 describe('Email codes (e2e)', () => {
@@ -27,7 +32,8 @@ describe('Email codes (e2e)', () => {
   });
 
   beforeEach(async () => {
-    user = await registerAndLogin(app);
+    // Registering would already have mailed a code
+    user = await createExistingUser(app);
   });
 
   afterAll(async () => {
