@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsNumber,
   IsInt,
   IsNotEmpty,
@@ -18,6 +19,10 @@ import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WorkoutStatus } from '../entities/workout.entity';
 import { BodyPart } from '../entities/exercise.entity';
+import {
+  EXERCISE_CATEGORIES,
+  ExerciseCategory,
+} from '../../common/exercise-categories';
 import { Forbidden } from '../../common/forbidden.decorator';
 
 export class CreateWorkoutDto {
@@ -225,6 +230,11 @@ export class CreateExerciseDto {
   @IsOptional()
   @IsEnum(['CH', 'BK', 'LG', 'SH', 'AR', 'CO', 'FB', 'OT'])
   bodyPart?: BodyPart;
+
+  @ApiPropertyOptional({ enum: EXERCISE_CATEGORIES, nullable: true })
+  @IsOptional()
+  @IsIn(EXERCISE_CATEGORIES)
+  category?: ExerciseCategory | null;
 
   @IsOptional()
   @IsUrl({ protocols: ['https'], require_protocol: true })

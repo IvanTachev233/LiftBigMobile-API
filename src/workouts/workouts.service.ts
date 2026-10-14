@@ -42,6 +42,7 @@ import {
   saveCardsInPlace,
   setIdsOf,
   SetView,
+  statusChange,
   toWorkoutView,
 } from './workout-cards';
 import { completeEnrollmentIfDone } from '../programs/enrollment-completion';
@@ -51,10 +52,11 @@ import {
 } from '../lifts/lift-records.service';
 import { wallClockDateOf } from '../common/calendar-date';
 
-// A set returned by a set write, with the pb flags of its whole workout so
-// the caller needs no reload.
+// A set returned by a set write, with the pb flags and start time of its
+// whole workout so the caller needs no reload.
 export type SetResultView = SetView & {
   workoutPb: { hasPb: boolean; pbSetIds: string[] };
+  workoutStartedAt: Date | null;
 };
 
 @Injectable()
@@ -95,6 +97,7 @@ export class WorkoutsService {
       name: dto.name,
       description: dto.description,
       bodyPart: dto.bodyPart,
+      category: dto.category ?? null,
       videoUrl: dto.videoUrl ?? null,
       createdById: user.id,
     });
@@ -211,6 +214,9 @@ export class WorkoutsService {
         recorded = await this.lifts.recordedExercises(manager, { id });
         await saveCardsInPlace(manager, id, existing, cards, 'self');
       }
+      if (patch.status !== undefined) {
+        Object.assign(patch, statusChange(workout, patch.status));
+      }
       if (Object.keys(patch).length > 0) {
         await manager.update(Workout, { id }, patch);
       }
@@ -282,12 +288,18 @@ export class WorkoutsService {
         actualWeight: dto.actualWeight ?? null,
         order: lastOrder + 1,
       });
-      if (dto.made !== undefined && dto.made !== null) {
-        await markStarted(manager, workout);
-      }
+      const startedAt =
+        dto.made !== undefined && dto.made !== null
+          ? await markStarted(manager, workout)
+          : workout.startedAt;
       await refreshTotal(manager, id);
       await this.lifts.reconcileWorkout(manager, id);
-      return this.setResultView(manager, id, identifiers[0].id as string);
+      return this.setResultView(
+        manager,
+        id,
+        identifiers[0].id as string,
+        startedAt,
+      );
     });
   }
 
@@ -316,13 +328,14 @@ export class WorkoutsService {
       if (dto.actualWeight !== undefined) {
         results.actualWeight = dto.actualWeight;
       }
+      let startedAt = workout.startedAt;
       if (Object.keys(results).length > 0) {
         await manager.update(WorkoutSet, { id: setId }, results);
-        await markStarted(manager, workout);
+        startedAt = await markStarted(manager, workout);
       }
       await refreshTotal(manager, id);
       await this.lifts.reconcileWorkout(manager, id);
-      return this.setResultView(manager, id, setId);
+      return this.setResultView(manager, id, setId, startedAt);
     });
   }
 
@@ -337,6 +350,7 @@ export class WorkoutsService {
     manager: EntityManager,
     workoutId: string,
     setId: string,
+    workoutStartedAt: Date | null,
   ): Promise<SetResultView> {
     const cards = (await loadCards(manager, workoutId)).sort(
       (a, b) => a.order - b.order,
@@ -354,6 +368,7 @@ export class WorkoutsService {
         hasPb: pbs.size > 0,
         pbSetIds: setIds.filter((sid) => pbs.has(sid)),
       },
+      workoutStartedAt,
     });
   }
 }

@@ -31,12 +31,14 @@ export interface CardInput {
   exerciseId: string;
   order: number;
   supersetGroup?: string | null;
+  notes?: string | null;
   sets: SetInput[];
 }
 
 // 'self' writes planned values and any results the body sends; a set keeps
 // its card. 'planned' writes planned values and notes only, never results;
-// a set may move to another card of the same workout.
+// a set may move to another card of the same workout. A card's note is kept
+// when the body leaves it out.
 export type CardWriteMode = 'self' | 'planned';
 
 export type WorkoutSource = 'manual' | 'coach' | 'program';
@@ -217,11 +219,14 @@ export async function saveCardsInPlace(
 ): Promise<void> {
   const cardIds: string[] = [];
   for (const card of cards) {
-    const values = {
+    const values: Partial<WorkoutExercise> = {
       exerciseId: card.exerciseId,
       order: card.order,
       supersetGroup: card.supersetGroup ?? null,
     };
+    if (mode === 'planned' && card.notes !== undefined) {
+      values.notes = card.notes?.trim() || null;
+    }
     if (card.id) {
       await manager.update(WorkoutExercise, { id: card.id }, values);
       cardIds.push(card.id);
@@ -306,16 +311,26 @@ export async function refreshTotal(
   );
 }
 
-// The first logged result moves a planned workout to in progress.
+// A status change; the first one away from PLANNED also sets startedAt.
+export function statusChange(
+  workout: Pick<Workout, 'status' | 'startedAt'>,
+  status: WorkoutStatus,
+): Pick<Workout, 'status'> & Partial<Pick<Workout, 'startedAt'>> {
+  const leavesPlanned =
+    workout.status === WorkoutStatus.PLANNED &&
+    status !== WorkoutStatus.PLANNED &&
+    workout.startedAt === null;
+  return leavesPlanned ? { status, startedAt: new Date() } : { status };
+}
+
+// The first logged result moves a planned workout to in progress. Returns
+// the workout's startedAt afterwards.
 export async function markStarted(
   manager: EntityManager,
   workout: Workout,
-): Promise<void> {
-  if (workout.status === WorkoutStatus.PLANNED) {
-    await manager.update(
-      Workout,
-      { id: workout.id },
-      { status: WorkoutStatus.IN_PROGRESS },
-    );
-  }
+): Promise<Date | null> {
+  if (workout.status !== WorkoutStatus.PLANNED) return workout.startedAt;
+  const change = statusChange(workout, WorkoutStatus.IN_PROGRESS);
+  await manager.update(Workout, { id: workout.id }, change);
+  return change.startedAt ?? workout.startedAt;
 }

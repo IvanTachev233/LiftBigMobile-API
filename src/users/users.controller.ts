@@ -2,13 +2,16 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Patch,
+  Post,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UsersService } from './users.service';
 
@@ -26,8 +29,22 @@ export class UsersController {
   }
 
   @Patch('me')
-  @ApiOperation({ summary: "Change the caller's weight unit" })
+  @ApiOperation({
+    summary: "Change the caller's name, weight unit or rest time",
+  })
   updateMe(@Body() dto: UpdateMeDto, @Request() req: AuthenticatedRequest) {
     return this.users.updateMe(req.user, dto);
+  }
+
+  @Post('me/password')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Change the caller's password; returns a new token",
+  })
+  changePassword(
+    @Body() dto: ChangePasswordDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.users.changePassword(req.user, dto);
   }
 }

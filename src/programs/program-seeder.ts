@@ -9,7 +9,12 @@ import { SportRequiredLift } from './entities/sport-required-lift.entity';
 import { Sport } from './entities/sport.entity';
 import { SYSTEM_ACTOR } from './program-actor';
 import { ProgramService } from './program.service';
-import { SAMPLE_PROGRAMS, SEED_EXERCISES, SEED_SPORTS } from './seed/seed-data';
+import {
+  GLOBAL_EXERCISE_TAGS,
+  SAMPLE_PROGRAMS,
+  SEED_EXERCISES,
+  SEED_SPORTS,
+} from './seed/seed-data';
 
 // Serializes seeding across API instances starting at once.
 const SEED_LOCK_KEY = 250001;
@@ -19,11 +24,14 @@ export interface SeedResult {
   sports: number;
   requiredLifts: number;
   programs: number;
+  // Category or equipment values filled in on globals
+  tagged: number;
 }
 
 // Adds the sports, their required lifts, the global exercises they use and
-// one published sample program per sport. Existing rows are kept, so it can
-// run on every start. Skipped when SEED_PROGRAMS=false.
+// one published sample program per sport, and fills in the category and
+// equipment of global exercises that have none. Existing rows and values are
+// kept, so it can run on every start. Skipped when SEED_PROGRAMS=false.
 @Injectable()
 export class ProgramSeeder implements OnApplicationBootstrap {
   private readonly logger = new Logger(ProgramSeeder.name);
@@ -51,6 +59,7 @@ export class ProgramSeeder implements OnApplicationBootstrap {
       sports: 0,
       requiredLifts: 0,
       programs: 0,
+      tagged: 0,
     };
     await this.dataSource.transaction(async (lock) => {
       await lock.query('SELECT pg_advisory_xact_lock($1)', [SEED_LOCK_KEY]);
@@ -58,10 +67,11 @@ export class ProgramSeeder implements OnApplicationBootstrap {
       const exerciseIds = await this.ensureExercises(manager, created);
       const sportIds = await this.ensureSports(manager, exerciseIds, created);
       await this.ensurePrograms(manager, sportIds, exerciseIds, created);
+      await this.tagGlobals(manager, created);
     });
     if (Object.values(created).some((n) => n > 0)) {
       this.logger.log(
-        `Seeded ${created.sports} sports, ${created.requiredLifts} required lifts, ${created.exercises} exercises, ${created.programs} programs`,
+        `Seeded ${created.sports} sports, ${created.requiredLifts} required lifts, ${created.exercises} exercises, ${created.programs} programs, ${created.tagged} exercise tags`,
       );
     }
     return created;
@@ -109,6 +119,30 @@ export class ProgramSeeder implements OnApplicationBootstrap {
       ids.set(name, saved.id);
     }
     return ids;
+  }
+
+  // Sets a global's category and equipment where they are still null,
+  // matching names in any case. Coach-made exercises are left alone.
+  private async tagGlobals(
+    manager: EntityManager,
+    created: SeedResult,
+  ): Promise<void> {
+    for (const [name, category, equipment] of GLOBAL_EXERCISE_TAGS) {
+      for (const [column, value] of [
+        ['category', category],
+        ['equipment', equipment],
+      ] as const) {
+        const result = await manager
+          .createQueryBuilder()
+          .update(Exercise)
+          .set({ [column]: value })
+          .where('LOWER(name) = LOWER(:name)', { name })
+          .andWhere('"createdById" IS NULL')
+          .andWhere(`"${column}" IS NULL`)
+          .execute();
+        created.tagged += result.affected ?? 0;
+      }
+    }
   }
 
   // Sport id by name.

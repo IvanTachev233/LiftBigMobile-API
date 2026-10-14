@@ -78,6 +78,10 @@ export class Workout {
   })
   status: WorkoutStatus;
 
+  // When the status first left PLANNED; null until then.
+  @Column({ type: 'timestamp', nullable: true })
+  startedAt: Date | null;
+
   @OneToMany(() => WorkoutExercise, (exercise) => exercise.workout, {
     cascade: true,
   })

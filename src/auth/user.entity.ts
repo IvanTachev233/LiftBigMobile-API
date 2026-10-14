@@ -6,6 +6,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
+import { DEFAULT_REST_SECONDS } from '../common/rest-seconds';
 import { WeightUnit } from '../common/weight-unit';
 import { Workout } from '../workouts/entities/workout.entity';
 
@@ -28,6 +29,21 @@ export class User {
 
   @Column({ type: 'enum', enum: WeightUnit, default: WeightUnit.KG })
   weightUnit: WeightUnit;
+
+  // Default rest between sets in the logger, in seconds
+  @Column({ type: 'int', default: DEFAULT_REST_SECONDS })
+  restSeconds: number;
+
+  // Signed into access tokens; raising it revokes every earlier token
+  @Column({ type: 'int', default: 0, select: false })
+  tokenVersion: number;
+
+  // Wrong current passwords on Change password since the last success or lock
+  @Column({ type: 'int', default: 0, select: false })
+  failedPasswordAttempts: number;
+
+  @Column({ type: 'timestamp', nullable: true, select: false })
+  passwordLockedUntil: Date | null;
 
   @Column({ nullable: true })
   coachId: string | null;

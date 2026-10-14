@@ -42,6 +42,10 @@ export class WorkoutExercise {
   @Column({ type: 'uuid', nullable: true })
   supersetGroup: string | null;
 
+  // The coach's note for the athlete on this card.
+  @Column({ type: 'varchar', nullable: true })
+  notes: string | null;
+
   @OneToMany(() => WorkoutSet, (set) => set.workoutExercise, {
     cascade: true,
   })
