@@ -250,9 +250,12 @@ describe('Users me password (e2e)', () => {
     newPassword: 'new-secret',
   });
 
-  it('changes the password with the right current one and returns only a new token', async () => {
+  it('changes the password with the right current one and returns only new tokens', async () => {
     const res = await changePassword(client, right()).expect(200);
-    expect(Object.keys(res.body as object)).toEqual(['access_token']);
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      'access_token',
+      'refresh_token',
+    ]);
     expect(res.text).not.toContain('$2');
     await login(client.email, 'new-secret').expect(201);
     await login(client.email, client.password).expect(401);

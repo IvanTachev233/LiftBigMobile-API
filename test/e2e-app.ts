@@ -53,6 +53,7 @@ export interface E2eUser {
   email: string;
   password: string;
   token: string;
+  refreshToken: string;
 }
 
 // The 6-digit code in the newest mail sent to this address
@@ -72,7 +73,7 @@ export function tokenUserId(token: string): string {
 }
 
 // Registers a user with a unique email, confirms it with the mailed code,
-// logs in and returns the login token.
+// logs in and returns the login tokens.
 export async function registerAndLogin(
   app: INestApplication<App>,
   role: 'CLIENT' | 'COACH' = 'CLIENT',
@@ -92,8 +93,9 @@ export async function registerAndLogin(
     .send({ email, password })
     .expect(201);
 
-  const { access_token: token } = loggedIn.body as { access_token: string };
-  return { id: tokenUserId(token), email, password, token };
+  const { access_token: token, refresh_token: refreshToken } =
+    loggedIn.body as { access_token: string; refresh_token: string };
+  return { id: tokenUserId(token), email, password, token, refreshToken };
 }
 
 // A verified account stored directly, like one that existed before email
@@ -119,6 +121,7 @@ export async function createExistingUser(
     .send({ email, password })
     .expect(201);
 
-  const { access_token: token } = loggedIn.body as { access_token: string };
-  return { id: tokenUserId(token), email, password, token };
+  const { access_token: token, refresh_token: refreshToken } =
+    loggedIn.body as { access_token: string; refresh_token: string };
+  return { id: tokenUserId(token), email, password, token, refreshToken };
 }

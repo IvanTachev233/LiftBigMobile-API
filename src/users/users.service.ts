@@ -11,7 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { EntityManager, EntityNotFoundError, Repository } from 'typeorm';
 import { AuthUser } from '../auth/auth-user.interface';
-import { AuthService } from '../auth/auth.service';
+import { AuthService, TokenPair } from '../auth/auth.service';
 import {
   MAX_PASSWORD_ATTEMPTS,
   PASSWORD_LOCK_MINUTES,
@@ -50,14 +50,15 @@ export class UsersService {
   }
 
   /**
-   * Replaces the password when the current one matches and returns a new
-   * token; every earlier token stops working. Three wrong current passwords
-   * lock this for 15 minutes (429); a wrong one before that is a 403.
+   * Replaces the password when the current one matches and returns tokens
+   * for a new session; every earlier token and session stops working. Three
+   * wrong current passwords lock this for 15 minutes (429); a wrong one before
+   * that is a 403.
    */
   async changePassword(
     user: AuthUser,
     dto: ChangePasswordDto,
-  ): Promise<{ access_token: string }> {
+  ): Promise<TokenPair> {
     const outcome = await this.users.manager.transaction(async (manager) => {
       const check = await checkPassword(manager, user.id, dto.currentPassword);
       if (!('row' in check)) return check;
@@ -75,7 +76,7 @@ export class UsersService {
     });
 
     throwOnFailedCheck(outcome, 'Current password is incorrect');
-    return { access_token: this.auth.signToken(outcome.user) };
+    return this.auth.signIn(outcome.user);
   }
 
   /**

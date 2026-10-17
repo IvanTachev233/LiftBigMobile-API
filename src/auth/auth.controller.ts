@@ -14,6 +14,7 @@ import { AuthService } from './auth.service';
 import {
   ForgotPasswordDto,
   LoginDto,
+  RefreshTokenDto,
   RegisterDto,
   ResendVerificationDto,
   ResetPasswordDto,
@@ -78,6 +79,25 @@ export class AuthController {
   })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
+  }
+
+  @Post('refresh')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'New access and refresh token for a refresh token; 401 when the session ended',
+  })
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.refresh_token);
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: "End the refresh token's session (same answer for any token)",
+  })
+  async logout(@Body() dto: RefreshTokenDto): Promise<void> {
+    await this.authService.logout(dto.refresh_token);
   }
 
   @Get('clients')

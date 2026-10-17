@@ -35,7 +35,10 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `DB_PASSWORD` | `password123` | Database password (local placeholder only) |
 | `DB_NAME` | `liftbig_db` | Database name |
 | `PORT` | `3000` | HTTP port |
-| `JWT_SECRET` | `super-secret-key` | Signs access tokens (valid for 60 minutes). **Must be set to a strong secret anywhere other than your machine.** |
+| `JWT_SECRET` | `super-secret-key` | Signs access tokens. **Must be set to a strong secret anywhere other than your machine.** |
+| `JWT_ACCESS_TTL` | `15m` | Access token lifetime: a duration (`20s`, `15m`, `1h`) or a number of seconds. The app gets a new one with its refresh token (`POST /auth/refresh`) |
+| `REFRESH_IDLE_DAYS` | `30` | A signed-in device's session ends after this many days without a refresh |
+| `REFRESH_ABSOLUTE_DAYS` | `90` | A session ends this many days after sign-in, however often it is used |
 | `NODE_ENV` | unset | `production` turns on SSL for the DB connection and turns off automatic schema sync (unless `TYPEORM_SYNC=true`) |
 | `TYPEORM_SYNC` | unset | `true` forces TypeORM `synchronize` on, even in production |
 | `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
@@ -46,7 +49,7 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` page. Unset: the page shows `[OPERATOR NAME]` |
 | `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` page. Unset: the page shows `[CONTACT EMAIL]` |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `JWT_ACCESS_TTL`, `REFRESH_*_DAYS`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
 
 ## Tests and checks
 

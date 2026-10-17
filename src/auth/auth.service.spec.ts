@@ -15,6 +15,7 @@ import * as bcrypt from 'bcryptjs';
 import { EmailCodePurpose } from '../email-codes/email-code.entity';
 import { EmailCodeService } from '../email-codes/email-code.service';
 import { AuthService } from './auth.service';
+import { AuthSessionService } from './auth-session.service';
 import { User } from './user.entity';
 import { Invite } from './invite.entity';
 
@@ -40,6 +41,7 @@ describe('AuthService', () => {
   let service: AuthService;
   let users: StoredUser[];
   let codes: { issue: jest.Mock; verify: jest.Mock };
+  let sessions: { start: jest.Mock; refresh: jest.Mock; revoke: jest.Mock };
   let repo: Record<string, jest.Mock>;
 
   beforeEach(async () => {
@@ -98,6 +100,13 @@ describe('AuthService', () => {
       issue: jest.fn(() => Promise.resolve({ expiresAt: new Date() })),
       verify: jest.fn(() => Promise.resolve()),
     };
+    sessions = {
+      start: jest.fn((user: { id: string }) =>
+        Promise.resolve(`refresh-${user.id}`),
+      ),
+      refresh: jest.fn(),
+      revoke: jest.fn(() => Promise.resolve()),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -105,6 +114,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: repo },
         { provide: getRepositoryToken(Invite), useValue: {} },
         { provide: EmailCodeService, useValue: codes },
+        { provide: AuthSessionService, useValue: sessions },
         {
           provide: JwtService,
           useValue: {
@@ -181,7 +191,10 @@ describe('AuthService', () => {
         EmailCodePurpose.VERIFY_EMAIL,
         '123456',
       );
-      expect(result).toEqual({ access_token: `jwt-${user.id}` });
+      expect(result).toEqual({
+        access_token: `jwt-${user.id}`,
+        refresh_token: `refresh-${user.id}`,
+      });
       expect(users[0].emailVerifiedAt).toBeInstanceOf(Date);
     });
 
@@ -249,7 +262,13 @@ describe('AuthService', () => {
         email: 'a@example.com',
         password: 'password123',
       });
-      expect(result).toEqual({ access_token: `jwt-${user.id}` });
+      expect(result).toEqual({
+        access_token: `jwt-${user.id}`,
+        refresh_token: `refresh-${user.id}`,
+      });
+      expect(sessions.start).toHaveBeenCalledWith(
+        expect.objectContaining({ id: user.id, tokenVersion: 3 }),
+      );
       expect(codes.issue).not.toHaveBeenCalled();
     });
 
@@ -408,6 +427,31 @@ describe('AuthService', () => {
       expect(error).toBeInstanceOf(BadRequestException);
       expect(error.getResponse()).toMatchObject({ attemptsLeft: 4 });
       expect(codes.verify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refresh', () => {
+    it('signs an access token for the user of the rotated session', async () => {
+      const user = await addUser('a@example.com', true);
+      sessions.refresh.mockResolvedValueOnce({ user, refreshToken: 'next' });
+      expect(await service.refresh('presented')).toEqual({
+        access_token: `jwt-${user.id}`,
+        refresh_token: 'next',
+      });
+      expect(sessions.refresh).toHaveBeenCalledWith('presented');
+    });
+
+    it('passes on a 401 for an ended session', async () => {
+      sessions.refresh.mockRejectedValueOnce(new UnauthorizedException());
+      const error = await caught(service.refresh('presented'));
+      expect(error).toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('logout', () => {
+    it('revokes the session of the token', async () => {
+      await service.logout('presented');
+      expect(sessions.revoke).toHaveBeenCalledWith('presented');
     });
   });
 });
