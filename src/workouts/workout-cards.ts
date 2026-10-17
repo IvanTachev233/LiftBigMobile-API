@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { WorkoutExercise } from './entities/workout-exercise.entity';
@@ -164,8 +164,10 @@ export async function assertExercisesVisible(
   }
 }
 
-// Every card id must be a card of this workout and every set id a set of
-// it, each used once. In 'self' mode a set id must also stay on its card.
+// Each id is used once. In 'planned' mode every card id must be a card of
+// this workout and every set id a set of it. In 'self' mode an id not on
+// this workout is a new row with that id (see assertNewIdsUnused), and a
+// set id of this workout must stay on its card.
 export function assertOwnIds(
   existing: WorkoutExercise[],
   cards: CardInput[],
@@ -178,8 +180,10 @@ export function assertOwnIds(
   const seenCardIds = new Set<string>();
   const seenSetIds = new Set<string>();
 
+  const newIdsAllowed = mode === 'self';
   for (const card of cards) {
-    if (card.id && (!ownCardIds.has(card.id) || seenCardIds.has(card.id))) {
+    const unknown = card.id && !ownCardIds.has(card.id) && !newIdsAllowed;
+    if (card.id && (unknown || seenCardIds.has(card.id))) {
       throw new BadRequestException(
         `Card "${card.id}" is not a card of this workout`,
       );
@@ -189,14 +193,47 @@ export function assertOwnIds(
     for (const set of card.sets) {
       if (!set.id) continue;
       const ownCard = cardOfSet.get(set.id);
-      const misplaced = mode === 'self' && ownCard !== card.id;
-      if (!ownCard || misplaced || seenSetIds.has(set.id)) {
+      const unknown = !ownCard && !newIdsAllowed;
+      const misplaced = mode === 'self' && ownCard && ownCard !== card.id;
+      if (unknown || misplaced || seenSetIds.has(set.id)) {
         throw new BadRequestException(
           `Set "${set.id}" is not a set of this ${mode === 'self' ? 'card' : 'workout'}`,
         );
       }
       seenSetIds.add(set.id);
     }
+  }
+}
+
+// New card and set ids sent by the client must not be in use on any other
+// workout, anyone's.
+export async function assertNewIdsUnused(
+  manager: EntityManager,
+  existing: WorkoutExercise[],
+  cards: CardInput[],
+): Promise<void> {
+  const ownCardIds = new Set(existing.map((card) => card.id));
+  const ownSetIds = new Set(
+    existing.flatMap((card) => card.sets.map((set) => set.id)),
+  );
+  const newCardIds = cards.flatMap((card) =>
+    card.id && !ownCardIds.has(card.id) ? [card.id] : [],
+  );
+  const newSetIds = cards.flatMap((card) =>
+    card.sets.flatMap((set) =>
+      set.id && !ownSetIds.has(set.id) ? [set.id] : [],
+    ),
+  );
+  const cardsInUse =
+    newCardIds.length > 0
+      ? await manager.count(WorkoutExercise, { where: { id: In(newCardIds) } })
+      : 0;
+  const setsInUse =
+    newSetIds.length > 0
+      ? await manager.count(WorkoutSet, { where: { id: In(newSetIds) } })
+      : 0;
+  if (cardsInUse > 0 || setsInUse > 0) {
+    throw new ConflictException('A card or set id is already in use');
   }
 }
 
@@ -208,8 +245,9 @@ function definedResults(set: SetInput): Partial<WorkoutSet> {
   return results;
 }
 
-// Updates kept cards and sets by id, creates rows without an id and deletes
-// rows left out. Ids must have passed assertOwnIds.
+// Updates kept cards and sets by id, creates the others (under the client
+// id when one is sent) and deletes rows left out. Ids must have passed
+// assertOwnIds and, for new ones, assertNewIdsUnused.
 export async function saveCardsInPlace(
   manager: EntityManager,
   workoutId: string,
@@ -217,6 +255,10 @@ export async function saveCardsInPlace(
   cards: CardInput[],
   mode: CardWriteMode,
 ): Promise<void> {
+  const ownCardIds = new Set(existing.map((card) => card.id));
+  const ownSetIds = new Set(
+    existing.flatMap((card) => card.sets.map((set) => set.id)),
+  );
   const cardIds: string[] = [];
   for (const card of cards) {
     const values: Partial<WorkoutExercise> = {
@@ -227,11 +269,12 @@ export async function saveCardsInPlace(
     if (mode === 'planned' && card.notes !== undefined) {
       values.notes = card.notes?.trim() || null;
     }
-    if (card.id) {
+    if (card.id && ownCardIds.has(card.id)) {
       await manager.update(WorkoutExercise, { id: card.id }, values);
       cardIds.push(card.id);
     } else {
       const { identifiers } = await manager.insert(WorkoutExercise, {
+        id: card.id,
         workoutId,
         ...values,
       });
@@ -251,7 +294,7 @@ export async function saveCardsInPlace(
       if (mode === 'planned') planned.notes = set.notes ?? null;
       const results = mode === 'self' ? definedResults(set) : {};
 
-      if (set.id) {
+      if (set.id && ownSetIds.has(set.id)) {
         await manager.update(
           WorkoutSet,
           { id: set.id },
@@ -260,6 +303,7 @@ export async function saveCardsInPlace(
         keptSetIds.add(set.id);
       } else {
         await manager.insert(WorkoutSet, {
+          id: set.id,
           notes: null,
           made: null,
           actualReps: null,

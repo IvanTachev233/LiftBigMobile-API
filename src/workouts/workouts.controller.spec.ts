@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
+  ConflictException,
   ExecutionContext,
   ForbiddenException,
   INestApplication,
@@ -274,6 +275,35 @@ describe('WorkoutsController set routes (HTTP)', () => {
         .post(url)
         .send({ reps: 5 })
         .expect(404);
+    });
+
+    it('200s with a client id and forwards it', async () => {
+      await request(app.getHttpServer())
+        .post(url)
+        .send({ id: SET, reps: 5 })
+        .expect(200);
+      expect(workoutsService.addSet).toHaveBeenCalledWith(
+        WORKOUT,
+        CARD,
+        { id: SET, reps: 5 },
+        caller,
+      );
+    });
+
+    it('400s a client id that is not a uuid', async () => {
+      await request(app.getHttpServer())
+        .post(url)
+        .send({ id: 'set-1', reps: 5 })
+        .expect(400);
+      expect(workoutsService.addSet).not.toHaveBeenCalled();
+    });
+
+    it('passes the service 409 through with a client id', async () => {
+      workoutsService.addSet.mockRejectedValueOnce(new ConflictException());
+      await request(app.getHttpServer())
+        .post(url)
+        .send({ id: SET, reps: 5 })
+        .expect(409);
     });
   });
 

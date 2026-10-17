@@ -26,6 +26,15 @@ import {
 import { Forbidden } from '../../common/forbidden.decorator';
 
 export class CreateWorkoutDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Client-made id; sending it again returns the stored workout (200)',
+  })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @IsDateString()
   date: string;
 
@@ -41,11 +50,13 @@ export class CreateWorkoutDto {
   isTemplate?: boolean;
 }
 
-// One set inside a card. `id` keeps an existing set of the same card.
+// One set inside a card. `id` keeps an existing set of the same card, or
+// creates a new set under that client id.
 export class WorkoutSetInput {
   @ApiPropertyOptional({
     format: 'uuid',
-    description: 'Existing set id of the same card; omit for a new set',
+    description:
+      'Existing set id of the same card, or a client id for a new set; omit for a server id',
   })
   @IsOptional()
   @IsUUID()
@@ -88,11 +99,13 @@ export class WorkoutSetInput {
   actualWeight?: number | null;
 }
 
-// One exercise card. `id` keeps an existing card of the same workout.
+// One exercise card. `id` keeps an existing card of the same workout, or
+// creates a new card under that client id.
 export class WorkoutExerciseInput {
   @ApiPropertyOptional({
     format: 'uuid',
-    description: 'Existing card id of this workout; omit for a new card',
+    description:
+      'Existing card id of this workout, or a client id for a new card; omit for a server id',
   })
   @IsOptional()
   @IsUUID()
@@ -141,9 +154,9 @@ export class UpdateWorkoutDto {
   @IsDateString()
   date?: string;
 
-  // When present, cards and sets are updated in place by id, rows without
-  // an id are created and rows left out are deleted; when absent, the cards
-  // are left as they are.
+  // When present, cards and sets are updated in place by id, rows with a
+  // new id or none are created and rows left out are deleted; when absent,
+  // the cards are left as they are. An id in use elsewhere is a 409.
   @ApiPropertyOptional({
     type: () => [WorkoutExerciseInput],
     description: 'Full card list when present; kept rows carry their id',
@@ -157,6 +170,15 @@ export class UpdateWorkoutDto {
 
 // Client appends a set to a card of one of their workouts
 export class AddSetDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Client-made id; sending it again returns the stored set (200)',
+  })
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
   @ApiProperty({ type: 'integer' })
   @IsInt()
   reps: number;

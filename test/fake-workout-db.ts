@@ -65,6 +65,9 @@ export function createFakeWorkoutDb(
       const actual = row[key];
       if (expected instanceof FindOperator) {
         if (expected.type === 'not') return actual !== expected.value;
+        if (expected.type === 'in') {
+          return (expected.value as unknown[]).includes(actual);
+        }
         if (expected.type === 'moreThanOrEqual') {
           return (
             new Date(actual as string).getTime() >=
