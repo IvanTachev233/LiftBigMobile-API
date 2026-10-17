@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Patch,
@@ -12,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UsersService } from './users.service';
 
@@ -46,5 +48,18 @@ export class UsersController {
     @Request() req: AuthenticatedRequest,
   ) {
     return this.users.changePassword(req.user, dto);
+  }
+
+  @Delete('me')
+  @HttpCode(204)
+  @ApiOperation({
+    summary:
+      "Delete the caller's account (a coach is anonymised); needs the password",
+  })
+  async deleteMe(
+    @Body() dto: DeleteAccountDto,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<void> {
+    await this.users.deleteAccount(req.user.id, dto.password);
   }
 }

@@ -4,10 +4,12 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { randomUUID } from 'node:crypto';
+import { EntityManager, EntityNotFoundError, Repository } from 'typeorm';
 import { AuthUser } from '../auth/auth-user.interface';
 import { AuthService } from '../auth/auth.service';
 import {
@@ -15,6 +17,7 @@ import {
   PASSWORD_LOCK_MINUTES,
 } from '../common/password-limits';
 import { User } from '../auth/user.entity';
+import { removeAccount } from './account-deletion';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 
@@ -56,41 +59,9 @@ export class UsersService {
     dto: ChangePasswordDto,
   ): Promise<{ access_token: string }> {
     const outcome = await this.users.manager.transaction(async (manager) => {
-      const row = await manager
-        .getRepository(User)
-        .createQueryBuilder('user')
-        .addSelect([
-          'user.passwordHash',
-          'user.tokenVersion',
-          'user.failedPasswordAttempts',
-          'user.passwordLockedUntil',
-        ])
-        .where('user.id = :id', { id: user.id })
-        .setLock('pessimistic_write')
-        .getOneOrFail();
-      const now = Date.now();
-      const lockedUntil = row.passwordLockedUntil?.getTime() ?? 0;
-      if (lockedUntil > now) {
-        return { locked: Math.ceil((lockedUntil - now) / 60000) } as const;
-      }
-      // A lock that ran out starts a fresh count
-      const failed = lockedUntil ? 0 : row.failedPasswordAttempts;
-
-      if (!(await bcrypt.compare(dto.currentPassword, row.passwordHash))) {
-        const attempts = failed + 1;
-        if (attempts >= MAX_PASSWORD_ATTEMPTS) {
-          await manager.update(User, user.id, {
-            failedPasswordAttempts: 0,
-            passwordLockedUntil: new Date(now + PASSWORD_LOCK_MINUTES * 60000),
-          });
-          return { locked: PASSWORD_LOCK_MINUTES } as const;
-        }
-        await manager.update(User, user.id, {
-          failedPasswordAttempts: attempts,
-          passwordLockedUntil: null,
-        });
-        return { attemptsLeft: MAX_PASSWORD_ATTEMPTS - attempts } as const;
-      }
+      const check = await checkPassword(manager, user.id, dto.currentPassword);
+      if (!('row' in check)) return check;
+      const { row } = check;
 
       const salt = await bcrypt.genSalt();
       const tokenVersion = row.tokenVersion + 1;
@@ -103,23 +74,140 @@ export class UsersService {
       return { user: { ...row, tokenVersion } } as const;
     });
 
-    if ('locked' in outcome) {
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: `Too many wrong passwords. Try again in ${outcome.locked} min.`,
-          retryAfterMinutes: outcome.locked,
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    if ('attemptsLeft' in outcome) {
-      throw new ForbiddenException({
-        statusCode: HttpStatus.FORBIDDEN,
-        message: 'Current password is incorrect',
-        attemptsLeft: outcome.attemptsLeft,
-      });
-    }
+    throwOnFailedCheck(outcome, 'Current password is incorrect');
     return { access_token: this.auth.signToken(outcome.user) };
+  }
+
+  /**
+   * Deletes the account when the password matches (see removeAccount for
+   * what goes). Wrong passwords count towards the Change password lock and
+   * are blocked by it (403, then 429).
+   */
+  async deleteAccount(userId: string, password: string): Promise<void> {
+    const outcome = await this.users.manager.transaction(async (manager) => {
+      const check = await checkPassword(manager, userId, password);
+      if ('row' in check) await removeAccount(manager, check.row);
+      return check;
+    });
+    throwOnFailedCheck(outcome, 'Password is incorrect');
+  }
+
+  /**
+   * deleteAccount for a verified email, for the public deletion page. Sends
+   * no mail. Unknown and unverified emails and wrong passwords all get the
+   * same 401, so the answer doesn't show whether an account exists; wrong
+   * passwords still count towards the Change password lock (429).
+   */
+  async deleteAccountWithCredentials(
+    email: string,
+    password: string,
+  ): Promise<void> {
+    const user = await this.users.findOne({
+      where: { email },
+      select: { id: true, emailVerifiedAt: true },
+    });
+    if (!user?.emailVerifiedAt) {
+      // Takes as long as a real password check
+      await bcrypt.compare(password, await unmatchedHash);
+      throw wrongCredentials();
+    }
+    try {
+      await this.deleteAccount(user.id, password);
+    } catch (error) {
+      // A wrong password, or the account went in the meantime
+      if (
+        error instanceof ForbiddenException ||
+        error instanceof EntityNotFoundError
+      ) {
+        throw wrongCredentials();
+      }
+      throw error;
+    }
+  }
+}
+
+// Compared against when there is no account, so it never matches in practice
+const unmatchedHash = bcrypt.hash(randomUUID(), 10);
+
+function wrongCredentials(): UnauthorizedException {
+  return new UnauthorizedException({
+    statusCode: HttpStatus.UNAUTHORIZED,
+    message: 'Email or password is incorrect',
+  });
+}
+
+type PasswordCheck =
+  | { locked: number }
+  | { attemptsLeft: number }
+  | { row: User };
+
+/**
+ * Locks the user's row and compares the password, counting a wrong one:
+ * the third in a row locks password checks for 15 minutes. Returns the row
+ * on a match. The count is written in the caller's transaction, so the
+ * caller must return rather than throw on a failed check.
+ */
+async function checkPassword(
+  manager: EntityManager,
+  userId: string,
+  password: string,
+): Promise<PasswordCheck> {
+  const row = await manager
+    .getRepository(User)
+    .createQueryBuilder('user')
+    .addSelect([
+      'user.passwordHash',
+      'user.tokenVersion',
+      'user.failedPasswordAttempts',
+      'user.passwordLockedUntil',
+    ])
+    .where('user.id = :id', { id: userId })
+    .setLock('pessimistic_write')
+    .getOneOrFail();
+  const now = Date.now();
+  const lockedUntil = row.passwordLockedUntil?.getTime() ?? 0;
+  if (lockedUntil > now) {
+    return { locked: Math.ceil((lockedUntil - now) / 60000) };
+  }
+  // A lock that ran out starts a fresh count
+  const failed = lockedUntil ? 0 : row.failedPasswordAttempts;
+
+  if (await bcrypt.compare(password, row.passwordHash)) return { row };
+  const attempts = failed + 1;
+  if (attempts >= MAX_PASSWORD_ATTEMPTS) {
+    await manager.update(User, userId, {
+      failedPasswordAttempts: 0,
+      passwordLockedUntil: new Date(now + PASSWORD_LOCK_MINUTES * 60000),
+    });
+    return { locked: PASSWORD_LOCK_MINUTES };
+  }
+  await manager.update(User, userId, {
+    failedPasswordAttempts: attempts,
+    passwordLockedUntil: null,
+  });
+  return { attemptsLeft: MAX_PASSWORD_ATTEMPTS - attempts };
+}
+
+// 429 with retryAfterMinutes while locked, 403 with attemptsLeft otherwise
+function throwOnFailedCheck<T extends object>(
+  outcome: T | { locked: number } | { attemptsLeft: number },
+  wrongMessage: string,
+): asserts outcome is T {
+  if ('locked' in outcome) {
+    throw new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        message: `Too many wrong passwords. Try again in ${outcome.locked} min.`,
+        retryAfterMinutes: outcome.locked,
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  if ('attemptsLeft' in outcome) {
+    throw new ForbiddenException({
+      statusCode: HttpStatus.FORBIDDEN,
+      message: wrongMessage,
+      attemptsLeft: outcome.attemptsLeft,
+    });
   }
 }

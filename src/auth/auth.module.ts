@@ -9,10 +9,12 @@ import { User } from './user.entity';
 import { Invite } from './invite.entity';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
+import { EmailCodesModule } from '../email-codes/email-codes.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Invite]),
+    EmailCodesModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

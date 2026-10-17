@@ -5,6 +5,10 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +18,11 @@ import { User } from './user.entity';
 import { Invite, InviteStatus } from './invite.entity';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { Workout, WorkoutStatus } from '../workouts/entities/workout.entity';
+import { EmailCodePurpose } from '../email-codes/email-code.entity';
+import {
+  EmailCodeService,
+  MAX_CODE_ATTEMPTS,
+} from '../email-codes/email-code.service';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 
@@ -29,14 +38,27 @@ export interface ClientSummary {
   lastWorkout: { date: Date; name: string } | null;
 }
 
+// The answer to a code for an account that can't use one, same as a first
+// wrong code so it doesn't reveal whether the account exists
+function wrongCode(): BadRequestException {
+  return new BadRequestException({
+    statusCode: HttpStatus.BAD_REQUEST,
+    message: 'Wrong code',
+    attemptsLeft: MAX_CODE_ATTEMPTS - 1,
+  });
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
     @InjectRepository(Invite)
     private inviteRepository: Repository<Invite>,
     private jwtService: JwtService,
+    private emailCodes: EmailCodeService,
   ) {}
 
   /** An access token carrying the user's current token version */
@@ -57,9 +79,14 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
+  /**
+   * Creates the account unverified and mails it a VERIFY_EMAIL code; the
+   * token comes from verifyEmail. When the mail cannot be sent the account
+   * is removed again, so signing up can simply be retried.
+   */
   async register(
     registerDto: RegisterDto,
-  ): Promise<{ user: User; token: string }> {
+  ): Promise<{ verificationRequired: true; email: string }> {
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
@@ -79,23 +106,138 @@ export class AuthService {
       throw error;
     }
 
-    const token = this.signToken({ ...user, tokenVersion: 0 });
-    delete (user as { passwordHash?: string }).passwordHash;
-    return { user, token };
+    try {
+      await this.emailCodes.issue(user, EmailCodePurpose.VERIFY_EMAIL);
+    } catch (error) {
+      await this.usersRepository.delete(user.id);
+      throw error;
+    }
+    return { verificationRequired: true, email: user.email };
+  }
+
+  /**
+   * Checks the mailed code, marks the email verified and signs in. Errors
+   * come from EmailCodeService.verify (400 attemptsLeft, 409); an unknown or
+   * already verified email gets the same 400 as a first wrong code.
+   */
+  async verifyEmail(
+    email: string,
+    code: string,
+  ): Promise<{ access_token: string }> {
+    const user = await this.findForSignIn(email);
+    if (!user || user.emailVerifiedAt) throw wrongCode();
+    await this.emailCodes.verify(user.id, EmailCodePurpose.VERIFY_EMAIL, code);
+    await this.usersRepository.update(user.id, { emailVerifiedAt: new Date() });
+    return { access_token: this.signToken(user) };
+  }
+
+  /**
+   * Mails a new code to an unverified account. Unknown and verified emails
+   * get the same silent success; the request limits (429) still apply.
+   */
+  async resendVerification(email: string): Promise<void> {
+    const user = await this.findForSignIn(email);
+    if (!user || user.emailVerifiedAt) return;
+    try {
+      await this.emailCodes.issue(user, EmailCodePurpose.VERIFY_EMAIL);
+    } catch (error) {
+      if (error instanceof NotFoundException) return;
+      throw error;
+    }
+  }
+
+  /**
+   * Mails a password reset code to a verified account. Every email gets the
+   * same silent success, also when no code is sent (unknown or unverified
+   * account, request limit, mail failure), so the answer never shows whether
+   * an account exists.
+   */
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.findForSignIn(email);
+    if (!user?.emailVerifiedAt) return;
+    try {
+      await this.emailCodes.issue(user, EmailCodePurpose.RESET_PASSWORD);
+    } catch (error) {
+      if (!(error instanceof HttpException)) throw error;
+      if (error instanceof ServiceUnavailableException) {
+        this.logger.warn(`Password reset code not sent to user ${user.id}`);
+      }
+    }
+  }
+
+  /**
+   * Sets a new password with the mailed reset code: raises tokenVersion (every
+   * earlier token stops working), clears the Change password lock and marks
+   * the email verified. Code errors come from EmailCodeService.verify (400
+   * attemptsLeft, 409); an unknown email gets the same 400 as a first wrong
+   * code.
+   */
+  async resetPassword(
+    email: string,
+    code: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.findForSignIn(email);
+    if (!user) throw wrongCode();
+    await this.emailCodes.verify(
+      user.id,
+      EmailCodePurpose.RESET_PASSWORD,
+      code,
+    );
+    const passwordHash = await bcrypt.hash(newPassword, await bcrypt.genSalt());
+    await this.usersRepository.manager.transaction(async (manager) => {
+      // Re-read under a lock so a concurrent version raise isn't lost
+      const row = await manager.findOne(User, {
+        where: { id: user.id },
+        select: { id: true, tokenVersion: true, emailVerifiedAt: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!row) return;
+      await manager.update(User, user.id, {
+        passwordHash,
+        tokenVersion: row.tokenVersion + 1,
+        failedPasswordAttempts: 0,
+        passwordLockedUntil: null,
+        emailVerifiedAt: row.emailVerifiedAt ?? new Date(),
+      });
+    });
   }
 
   async login(loginDto: LoginDto) {
-    const user = await this.usersRepository
+    const user = await this.findForSignIn(loginDto.email);
+
+    if (
+      !user ||
+      !(await bcrypt.compare(loginDto.password, user.passwordHash))
+    ) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.emailVerifiedAt) {
+      // A code that can't be sent now (limit, mail down) can be resent later
+      await this.emailCodes
+        .issue(user, EmailCodePurpose.VERIFY_EMAIL)
+        .catch((error: unknown) => {
+          if (!(error instanceof HttpException)) throw error;
+        });
+      throw new ForbiddenException({
+        statusCode: HttpStatus.FORBIDDEN,
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Confirm your email to log in.',
+        email: user.email,
+      });
+    }
+    return { access_token: this.signToken(user) };
+  }
+
+  // The user with the columns needed to check a password and sign a token
+  private findForSignIn(email: string): Promise<User | null> {
+    return this.usersRepository
       .createQueryBuilder('user')
       .addSelect('user.passwordHash')
       .addSelect('user.tokenVersion')
-      .where('user.email = :email', { email: loginDto.email })
+      .where('user.email = :email', { email })
       .getOne();
-
-    if (user && (await bcrypt.compare(loginDto.password, user.passwordHash))) {
-      return { access_token: this.signToken(user) };
-    }
-    throw new UnauthorizedException('Invalid credentials');
   }
 
   // The coach's clients with a summary of the workouts this coach assigned

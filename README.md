@@ -41,8 +41,12 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
 | `SEED_PROGRAMS` | unset | On every start the API adds any missing sports, their required lifts, the global exercises they use and one published sample program per sport. `false` skips this |
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
+| `MAIL_PROVIDER_KEY` | unset | Resend API key for sign-up and password reset codes (set as a Cloud Run secret). Unset: mails, codes included, are written to the log instead of sent |
+| `MAIL_FROM` | unset | Sender for those mails, e.g. `LiftBig <codes@your-domain>` on a domain verified in Resend. Required when `MAIL_PROVIDER_KEY` is set; the API refuses to start without it |
+| `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` page. Unset: the page shows `[OPERATOR NAME]` |
+| `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` page. Unset: the page shows `[CONTACT EMAIL]` |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT` and `CORS_ORIGINS`. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
 
 ## Tests and checks
 
@@ -61,8 +65,77 @@ npm run format      # Prettier
 
 > Deploying changes production data. Talk to the maintainer before deploying.
 
-- **Google Cloud Run** is the current production target (the app's production build points at a `*.run.app` URL). The maintainer deploys with an interactive script, `deploy_backend.sh`, which lives in their local workspace rather than in this repo. It sets `TYPEORM_SYNC=true` and `RUN_MIGRATIONS=true`, so **entity changes alter the production schema on deploy**. Adding nullable columns is safe. Treat renames, type changes and column removals as destructive.
-- **Azure Web App**: every push to `master` runs [`.github/workflows/master_liftbigmobile-api5.yml`](.github/workflows/master_liftbigmobile-api5.yml), which builds and deploys to the `liftbigmobile-api5` Azure Web App. Whether that target is still in use isn't documented. Check before pushing to `master`.
+Production runs on **Google Cloud Run**; the app's production build points at its `*.run.app` URL. [`scripts/deploy.sh`](scripts/deploy.sh) uploads this repo and Cloud Build builds it with the `Dockerfile`. Files ignored by `.gitignore` (`.env`, dumps, `node_modules`, `dist`) are not uploaded.
+
+Every deploy sets `TYPEORM_SYNC=true` and `RUN_MIGRATIONS=true`, so **entity changes alter the production schema on deploy**. Adding nullable columns is safe. Treat renames, type changes and column removals as destructive.
+
+### One-time setup
+
+```bash
+scripts/gcp-setup.sh --project <project-id>
+```
+
+Run it in a terminal with an account that owns the project. It:
+
+- logs in to `gcloud` if no account is active,
+- enables the Cloud Run, Cloud Build, Artifact Registry and Secret Manager APIs,
+- grants the Compute Engine default service account, which Cloud Build uses for source deploys, `roles/run.builder` and `roles/storage.objectViewer`,
+- creates the secrets `DATABASE_URL`, `JWT_SECRET` and `MAIL_PROVIDER_KEY` in Secret Manager if they are missing (values are typed hidden; a blank `JWT_SECRET` generates a random one), and
+- grants the service's runtime service account `roles/secretmanager.secretAccessor` on each of them.
+
+It is safe to run again; existing secrets are left as they are. To change a secret's value, add a version and redeploy (the service reads `latest` when a revision is created):
+
+```bash
+read -r -s -p 'New value: ' v && printf '%s' "$v" |
+  gcloud secrets versions add JWT_SECRET --project=<project-id> --data-file=-; unset v
+```
+
+Replacing `JWT_SECRET` signs every user out.
+
+### Deploy
+
+```bash
+export GCP_PROJECT_ID=<project-id>
+export MAIL_FROM='LiftBig <codes@your-domain>'
+export CORS_ORIGINS=                       # empty: no extra web origins
+export PRIVACY_OPERATOR_NAME='...'
+export PRIVACY_CONTACT_EMAIL='...'
+scripts/deploy.sh --dry-run                # prints the gcloud command, deploys nothing
+scripts/deploy.sh
+```
+
+In a terminal, the script asks for any value that isn't set, shows the command and asks before deploying. Without a terminal, or with `--non-interactive`, it doesn't ask: it exits with an error naming each missing value, and passes `--quiet` to `gcloud`. `--project`, `--region` and `--service` override the env vars. `scripts/deploy.sh --help` lists the options.
+
+| Name | Kind | Default | Notes |
+| --- | --- | --- | --- |
+| `GCP_PROJECT_ID` | input | required | The string project ID, not the project number |
+| `GCP_REGION` | input | `europe-west1` | Cloud Run region |
+| `SERVICE` | input | `liftbig-api` | Cloud Run service name |
+| `MAIL_FROM` | env var | required | Sender of the code mails (see [Environment variables](#environment-variables)) |
+| `CORS_ORIGINS` | env var | required, may be empty | Extra allowed web origins |
+| `PRIVACY_OPERATOR_NAME` | env var | required | Shown on `/privacy` |
+| `PRIVACY_CONTACT_EMAIL` | env var | required | Shown on `/privacy` |
+| `TYPEORM_SYNC`, `RUN_MIGRATIONS` | env var | always `true` | Set by the script |
+| `DATABASE_URL` | secret | Secret Manager `DATABASE_URL:latest` | Neon connection URL |
+| `JWT_SECRET` | secret | Secret Manager `JWT_SECRET:latest` | Signs access tokens |
+| `MAIL_PROVIDER_KEY` | secret | Secret Manager `MAIL_PROVIDER_KEY:latest` | Resend API key |
+
+Env vars go through `--update-env-vars`, so any other env var on the service stays as it is. Secrets go through `--set-secrets`, so the service's secrets are exactly these three. The script also removes plain env vars with the secrets' names (`--remove-env-vars`, applied before the secrets), so a service that still has `DATABASE_URL` as a plain value switches to the secret in the same deploy. It never reads or prints a secret value.
+
+Older plain env vars such as `DB_HOST` or `DB_PASSWORD` stay on the service until you remove them. The API ignores them once `DATABASE_URL` is set:
+
+```bash
+gcloud run services update liftbig-api --project=<project-id> --region=europe-west1 \
+  --remove-env-vars=DB_HOST,DB_PORT,DB_USERNAME,DB_PASSWORD,DB_NAME
+```
+
+If a new revision fails to start (for example a secret can't be read), Cloud Run keeps serving the previous revision.
+
+### Running from a pipeline later
+
+A CI job runs the same script with no changes. Give it the inputs as env vars (none of them are secret) and authenticate `gcloud` as a deploy service account through **Workload Identity Federation**, so there is no service account key file to store. On GitHub Actions that means `permissions: id-token: write`, then `google-github-actions/auth` with `workload_identity_provider` and `service_account`, then `google-github-actions/setup-gcloud`, then `scripts/deploy.sh`. Without a terminal it never waits for input.
+
+The deploy service account needs `roles/run.sourceDeveloper` and `roles/serviceusage.serviceUsageConsumer` on the project, and `roles/iam.serviceAccountUser` on the service's runtime service account. It never needs access to the secret values; the runtime service account reads them.
 
 ## Deploying the card tables and assigned workouts
 
@@ -104,7 +177,7 @@ Keep the dump outside the repo and never commit it.
 
 ### 2. Deploy the API and the app together
 
-The old app can't read the new API responses, and the new app can't talk to the old API (`/programs` is gone). Deploy the API with `deploy_backend.sh` (see [Deployment](#deployment); it sets `TYPEORM_SYNC=true` and `RUN_MIGRATIONS=true`), then ship the app build from the matching app commit straight away. Device builds made before this change stop working until they are updated.
+The old app can't read the new API responses, and the new app can't talk to the old API (`/programs` is gone). Deploy the API with `scripts/deploy.sh` (see [Deployment](#deployment); it sets `TYPEORM_SYNC=true` and `RUN_MIGRATIONS=true`), then ship the app build from the matching app commit straight away. Device builds made before this change stop working until they are updated.
 
 ### 3. Check the migration
 
