@@ -97,17 +97,23 @@ Replacing `JWT_SECRET` signs every user out.
 
 ### Deploy
 
+The script reads `GCP_PROJECT_ID`, `MAIL_FROM`, `CORS_ORIGINS`, `PRIVACY_OPERATOR_NAME` and `PRIVACY_CONTACT_EMAIL` from the API's `.env` (`--env-file PATH` for another file); it reads only those keys, never the file's secrets. Values already in the environment win:
+
 ```bash
-export GCP_PROJECT_ID=<project-id>
-export MAIL_FROM='LiftBig <codes@your-domain>'
-export CORS_ORIGINS=                       # empty: no extra web origins
-export PRIVACY_OPERATOR_NAME='...'
-export PRIVACY_CONTACT_EMAIL='...'
+# .env (gitignored)
+GCP_PROJECT_ID=<project-id>
+MAIL_FROM='LiftBig <codes@your-domain>'
+CORS_ORIGINS=                              # empty: no extra web origins
+PRIVACY_OPERATOR_NAME='...'
+PRIVACY_CONTACT_EMAIL='...'
+```
+
+```bash
 scripts/deploy.sh --dry-run                # prints the gcloud command, deploys nothing
 scripts/deploy.sh
 ```
 
-In a terminal, the script asks for any value that isn't set, shows the command and asks before deploying. Without a terminal, or with `--non-interactive`, it doesn't ask: it exits with an error naming each missing value, and passes `--quiet` to `gcloud`. `--project`, `--region` and `--service` override the env vars. `scripts/deploy.sh --help` lists the options.
+In a terminal, the script asks for any value still not set, shows the command and asks before deploying. Without a terminal, or with `--non-interactive`, it doesn't ask: it exits with an error naming each missing value, and passes `--quiet` to `gcloud`. `--project`, `--region` and `--service` override the env vars. `scripts/deploy.sh --help` lists the options.
 
 | Name | Kind | Default | Notes |
 | --- | --- | --- | --- |
