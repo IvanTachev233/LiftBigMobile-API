@@ -12,6 +12,7 @@ import {
   DeepPartial,
   EntityManager,
 } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { Workout, WorkoutStatus } from './entities/workout.entity';
 import { Exercise } from './entities/exercise.entity';
 import { WorkoutExercise } from './entities/workout-exercise.entity';
@@ -32,6 +33,7 @@ import {
 import {
   CARD_RELATIONS,
   assertExercisesVisible,
+  assertNewIdsUnused,
   assertOwnIds,
   isPlanLocked,
   loadCards,
@@ -104,11 +106,13 @@ export class WorkoutsService {
     return this.exerciseRepo.save(exercise);
   }
 
+  // With a client id the workout is stored once and the full workout view is
+  // returned, so a replay of the same id gets the stored workout back.
   async create(
     createWorkoutDto: CreateWorkoutDto,
     user: AuthUser,
   ): Promise<Workout> {
-    const workout = this.workoutRepo.create({
+    const values = {
       date: createWorkoutDto.date,
       name: createWorkoutDto.name,
       notes: createWorkoutDto.notes,
@@ -116,8 +120,23 @@ export class WorkoutsService {
       userId: user.id,
       assignedById: null,
       status: WorkoutStatus.PLANNED,
-    } as DeepPartial<Workout>);
-    const saved = await this.workoutRepo.save(workout);
+    } as DeepPartial<Workout>;
+    const { id } = createWorkoutDto;
+    if (id !== undefined) {
+      await this.workoutRepo
+        .createQueryBuilder()
+        .insert()
+        .values({ ...values, id } as QueryDeepPartialEntity<Workout>)
+        .orIgnore()
+        .execute();
+      const stored = await this.workoutRepo.findOne({ where: { id } });
+      if (stored?.userId !== user.id) {
+        throw new ConflictException(`Workout id "${id}" is already in use`);
+      }
+      return this.findOne(id, user);
+    }
+
+    const saved = await this.workoutRepo.save(this.workoutRepo.create(values));
     saved.exercises ??= [];
     saved.assignedBy ??= null;
     return saved;
@@ -206,6 +225,7 @@ export class WorkoutsService {
       if (cards !== undefined) {
         const existing = await loadCards(manager, id);
         assertOwnIds(existing, cards, 'self');
+        await assertNewIdsUnused(manager, existing, cards);
         await assertExercisesVisible(
           manager.getRepository(Exercise),
           cards.map((card) => card.exerciseId),
@@ -254,7 +274,8 @@ export class WorkoutsService {
     });
   }
 
-  // Appends a set to a card of any own workout.
+  // Appends a set to a card of any own workout. A client id already on this
+  // card returns that set unchanged; one used anywhere else is a conflict.
   async addSet(
     id: string,
     cardId: string,
@@ -273,12 +294,24 @@ export class WorkoutsService {
       if (!card) {
         throw new NotFoundException(`Card "${cardId}" not found on workout`);
       }
+      if (dto.id !== undefined) {
+        const stored = await manager.findOne(WorkoutSet, {
+          where: { id: dto.id },
+        });
+        if (stored && stored.workoutExerciseId !== card.id) {
+          throw new ConflictException(`Set id "${dto.id}" is already in use`);
+        }
+        if (stored) {
+          return this.setResultView(manager, id, stored.id, workout.startedAt);
+        }
+      }
 
       const lastOrder = card.sets.reduce(
         (max, set) => Math.max(max, set.order),
         0,
       );
       const { identifiers } = await manager.insert(WorkoutSet, {
+        id: dto.id,
         workoutExerciseId: card.id,
         reps: dto.reps,
         weight: dto.weight ?? null,

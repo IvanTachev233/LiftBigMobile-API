@@ -9,7 +9,10 @@ import {
   UseGuards,
   Request,
   ParseUUIDPipe,
+  Res,
+  HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { WorkoutsService } from './workouts.service';
 import {
@@ -31,11 +34,14 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 export class WorkoutsController {
   constructor(private readonly workoutsService: WorkoutsService) {}
 
+  // With a client id the first call and every replay answer 200
   @Post()
   create(
     @Body() createWorkoutDto: CreateWorkoutDto,
     @Request() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
   ) {
+    if (createWorkoutDto.id !== undefined) res.status(HttpStatus.OK);
     return this.workoutsService.create(createWorkoutDto, req.user);
   }
 
@@ -84,13 +90,18 @@ export class WorkoutsController {
   }
 
   @Post(':id/cards/:cardId/sets')
-  @ApiOperation({ summary: 'Add a set to a card of an own workout' })
+  @ApiOperation({
+    summary: 'Add a set to a card of an own workout',
+    description: 'With a client id the first call and every replay answer 200',
+  })
   addSet(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('cardId', ParseUUIDPipe) cardId: string,
     @Body() dto: AddSetDto,
     @Request() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
   ) {
+    if (dto.id !== undefined) res.status(HttpStatus.OK);
     return this.workoutsService.addSet(id, cardId, dto, req.user);
   }
 

@@ -187,7 +187,10 @@ describe('Email verification (e2e)', () => {
       const existing = await createExistingUser(app);
       const res = await login(existing.email).expect(201);
       const body = res.body as { access_token: unknown };
-      expect(Object.keys(body)).toEqual(['access_token']);
+      expect(Object.keys(body).sort()).toEqual([
+        'access_token',
+        'refresh_token',
+      ]);
       expect(typeof body.access_token).toBe('string');
       expect(mailsTo(existing.email)).toBe(0);
       await login(existing.email, 'wrong-password').expect(401);

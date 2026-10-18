@@ -14,6 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtPayload } from './auth-user.interface';
+import { AuthSessionService, SignableUser } from './auth-session.service';
 import { User } from './user.entity';
 import { Invite, InviteStatus } from './invite.entity';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
@@ -25,6 +26,12 @@ import {
 } from '../email-codes/email-code.service';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
+
+// What signing in and refreshing return
+export interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+}
 
 export interface ClientSummary {
   id: string;
@@ -59,15 +66,11 @@ export class AuthService {
     private inviteRepository: Repository<Invite>,
     private jwtService: JwtService,
     private emailCodes: EmailCodeService,
+    private sessions: AuthSessionService,
   ) {}
 
   /** An access token carrying the user's current token version */
-  signToken(
-    user: Pick<
-      User,
-      'id' | 'email' | 'name' | 'role' | 'coachId' | 'tokenVersion'
-    >,
-  ): string {
+  signToken(user: SignableUser): string {
     const payload: JwtPayload = {
       email: user.email,
       name: user.name,
@@ -77,6 +80,30 @@ export class AuthService {
       ver: user.tokenVersion,
     };
     return this.jwtService.sign(payload);
+  }
+
+  /** An access token plus a refresh token for a new device session */
+  async signIn(user: SignableUser): Promise<TokenPair> {
+    return {
+      access_token: this.signToken(user),
+      refresh_token: await this.sessions.start(user),
+    };
+  }
+
+  /**
+   * Rotates the session holding the refresh token and signs a new access
+   * token from the current user row; 401 when the session has ended (see
+   * AuthSessionService.refresh).
+   */
+  async refresh(refreshToken: string): Promise<TokenPair> {
+    const { user, refreshToken: next } =
+      await this.sessions.refresh(refreshToken);
+    return { access_token: this.signToken(user), refresh_token: next };
+  }
+
+  /** Ends the session holding the refresh token; unknown tokens are ignored */
+  logout(refreshToken: string): Promise<void> {
+    return this.sessions.revoke(refreshToken);
   }
 
   /**
@@ -120,15 +147,12 @@ export class AuthService {
    * come from EmailCodeService.verify (400 attemptsLeft, 409); an unknown or
    * already verified email gets the same 400 as a first wrong code.
    */
-  async verifyEmail(
-    email: string,
-    code: string,
-  ): Promise<{ access_token: string }> {
+  async verifyEmail(email: string, code: string): Promise<TokenPair> {
     const user = await this.findForSignIn(email);
     if (!user || user.emailVerifiedAt) throw wrongCode();
     await this.emailCodes.verify(user.id, EmailCodePurpose.VERIFY_EMAIL, code);
     await this.usersRepository.update(user.id, { emailVerifiedAt: new Date() });
-    return { access_token: this.signToken(user) };
+    return this.signIn(user);
   }
 
   /**
@@ -167,10 +191,10 @@ export class AuthService {
 
   /**
    * Sets a new password with the mailed reset code: raises tokenVersion (every
-   * earlier token stops working), clears the Change password lock and marks
-   * the email verified. Code errors come from EmailCodeService.verify (400
-   * attemptsLeft, 409); an unknown email gets the same 400 as a first wrong
-   * code.
+   * earlier token and session stops working), clears the Change password lock
+   * and marks the email verified. Code errors come from
+   * EmailCodeService.verify (400 attemptsLeft, 409); an unknown email gets the
+   * same 400 as a first wrong code.
    */
   async resetPassword(
     email: string,
@@ -203,7 +227,7 @@ export class AuthService {
     });
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto): Promise<TokenPair> {
     const user = await this.findForSignIn(loginDto.email);
 
     if (
@@ -227,7 +251,7 @@ export class AuthService {
         email: user.email,
       });
     }
-    return { access_token: this.signToken(user) };
+    return this.signIn(user);
   }
 
   // The user with the columns needed to check a password and sign a token

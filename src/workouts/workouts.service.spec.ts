@@ -727,21 +727,6 @@ describe('WorkoutsService', () => {
 
     it.each([
       [
-        'a card id from another workout',
-        [{ id: 'other-1-card-a', exerciseId: 'global-1', order: 1, sets: [] }],
-      ],
-      [
-        'a set id from another workout',
-        [
-          {
-            id: 'workout-1-card-a',
-            exerciseId: 'global-1',
-            order: 1,
-            sets: [{ id: 'other-1-set-a1', reps: 5, weight: 100 }],
-          },
-        ],
-      ],
-      [
         'a set id that belongs to a different card of this workout',
         [
           {
@@ -759,17 +744,6 @@ describe('WorkoutsService', () => {
             exerciseId: 'global-1',
             order: 1,
             sets: [{ id: 'workout-1-set-a1', reps: 5, weight: 100 }],
-          },
-        ],
-      ],
-      [
-        'an id that exists nowhere',
-        [
-          {
-            id: '55555555-5555-4555-8555-555555555555',
-            exerciseId: 'global-1',
-            order: 1,
-            sets: [],
           },
         ],
       ],
@@ -810,6 +784,67 @@ describe('WorkoutsService', () => {
         await expect(attempt(cards)).rejects.toBeInstanceOf(
           BadRequestException,
         );
+        noWrites();
+      },
+    );
+
+    it('creates a card and its sets under ids not yet used anywhere', async () => {
+      const cardId = '55555555-5555-4555-8555-555555555555';
+      const setId = '66666666-6666-4666-8666-666666666666';
+      await attempt([
+        {
+          id: 'workout-1-card-a',
+          exerciseId: 'global-1',
+          order: 1,
+          sets: [
+            { id: 'workout-1-set-a1', reps: 5, weight: 100 },
+            { id: setId, reps: 4, weight: 100 },
+          ],
+        },
+        {
+          id: cardId,
+          exerciseId: 'global-1',
+          order: 2,
+          sets: [{ reps: 3, weight: 90 }],
+        },
+      ]);
+      const reloaded = await service.findOne('workout-1', coach1);
+      expect(cardSummary(reloaded)).toEqual([
+        {
+          id: 'workout-1-card-a',
+          exerciseId: 'global-1',
+          order: 1,
+          sets: ['workout-1-set-a1', setId],
+        },
+        {
+          id: cardId,
+          exerciseId: 'global-1',
+          order: 2,
+          sets: [expect.stringMatching(/^gen-WorkoutSet/)],
+        },
+      ]);
+    });
+
+    it.each([
+      [
+        'a card id from another workout',
+        [{ id: 'other-1-card-a', exerciseId: 'global-1', order: 1, sets: [] }],
+      ],
+      [
+        'a set id from another workout',
+        [
+          {
+            id: 'workout-1-card-a',
+            exerciseId: 'global-1',
+            order: 1,
+            sets: [{ id: 'other-1-set-a1', reps: 5, weight: 100 }],
+          },
+        ],
+      ],
+    ] as [string, WorkoutExerciseInput[]][])(
+      '409s on %s and changes nothing',
+      async (_label, cards) => {
+        await expect(attempt(cards)).rejects.toBeInstanceOf(ConflictException);
         noWrites();
       },
     );
@@ -1048,6 +1083,51 @@ describe('WorkoutsService', () => {
           clientOfCoach1,
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
+      noWrites();
+    });
+
+    it('stores the new set under the client id', async () => {
+      const set = await service.addSet(
+        'workout-1',
+        'workout-1-card-a',
+        { id: 'client-set-1', reps: 4 },
+        coach1,
+      );
+      expect(set).toMatchObject({ id: 'client-set-1', order: 2 });
+      expect(fake.set('client-set-1')?.workoutExerciseId).toBe(
+        'workout-1-card-a',
+      );
+    });
+
+    it('returns the stored set for a replayed client id and writes nothing', async () => {
+      const set = await service.addSet(
+        'workout-1',
+        'workout-1-card-a',
+        { id: 'workout-1-set-a1', reps: 9, weight: 1 },
+        coach1,
+      );
+      expect(set).toMatchObject({
+        id: 'workout-1-set-a1',
+        reps: 5,
+        weight: 100,
+        order: 1,
+        pb: false,
+      });
+      expect(fake.cardsOf('workout-1')).toHaveLength(2);
+      noWrites();
+    });
+
+    it('409s on a client id of a set on another card and writes nothing', async () => {
+      for (const usedId of ['workout-1-set-b1', 'other-1-set-a1']) {
+        await expect(
+          service.addSet(
+            'workout-1',
+            'workout-1-card-a',
+            { id: usedId, reps: 4 },
+            coach1,
+          ),
+        ).rejects.toBeInstanceOf(ConflictException);
+      }
       noWrites();
     });
   });

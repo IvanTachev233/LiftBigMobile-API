@@ -1,4 +1,5 @@
 import { EntityManager } from 'typeorm';
+import { AuthSession } from '../auth/auth-session.entity';
 import { Invite } from '../auth/invite.entity';
 import { User } from '../auth/user.entity';
 import { EmailCode } from '../email-codes/email-code.entity';
@@ -47,8 +48,8 @@ export async function removeAccount(
 }
 
 // Lift records, own workouts (self-made, assigned or from a program) with
-// their cards and sets, enrollments, email codes, and invites sent by or to
-// the user. Children go before parents, so no cascade is relied on.
+// their cards and sets, enrollments, email codes, sessions, and invites sent
+// by or to the user. Children go before parents, so no cascade is relied on.
 async function deleteOwnData(
   manager: EntityManager,
   user: Pick<User, 'id' | 'email'>,
@@ -87,6 +88,7 @@ async function deleteOwnData(
 
   await manager.delete(ProgramEnrollment, { userId });
   await manager.delete(EmailCode, { userId });
+  await manager.delete(AuthSession, { userId });
   await manager.delete(Invite, { coachId: userId });
   await manager.delete(Invite, { clientEmail: user.email });
 }

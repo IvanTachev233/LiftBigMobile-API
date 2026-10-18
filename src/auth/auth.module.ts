@@ -7,25 +7,32 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { User } from './user.entity';
 import { Invite } from './invite.entity';
+import { AuthSession } from './auth-session.entity';
+import { AuthSessionService } from './auth-session.service';
+import { accessTokenTtl } from './session-config';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { EmailCodesModule } from '../email-codes/email-codes.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Invite]),
+    TypeOrmModule.forFeature([User, Invite, AuthSession]),
     EmailCodesModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET') || 'super-secret-key',
-        signOptions: { expiresIn: '60m' },
+        signOptions: {
+          expiresIn: accessTokenTtl(
+            configService.get<string>('JWT_ACCESS_TTL'),
+          ),
+        },
       }),
       inject: [ConfigService],
     }),
   ],
-  providers: [AuthService, JwtStrategy, RolesGuard],
+  providers: [AuthService, AuthSessionService, JwtStrategy, RolesGuard],
   controllers: [AuthController],
   exports: [AuthService, RolesGuard],
 })

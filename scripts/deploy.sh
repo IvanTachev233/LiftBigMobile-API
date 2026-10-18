@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Deploys the API to Google Cloud Run from this repo's source (built with the
-# Dockerfile). Inputs come from env vars or flags; in a terminal the script asks
-# for a missing value, otherwise it stops and names it, so a pipeline can run it
-# unchanged. Secrets are passed by Secret Manager name only and never read here.
+# Dockerfile). Inputs come from env vars or flags, then from the API's .env (only
+# the keys listed in REQUIRED); in a terminal the script asks for a value still
+# missing, otherwise it stops and names it, so a pipeline can run it unchanged.
+# Secrets are passed by Secret Manager name only and never read here.
 # One-time project setup (login, APIs, IAM, secrets): scripts/gcp-setup.sh.
 
 set -euo pipefail
@@ -27,6 +28,9 @@ Options:
   --project ID        Google Cloud project ID (env GCP_PROJECT_ID)
   --region REGION     Cloud Run region (env GCP_REGION, default europe-west1)
   --service NAME      Cloud Run service (env SERVICE, default liftbig-api)
+  --env-file PATH     File to read the env vars below from (default: .env in
+                      the API folder, when it exists); values already in the
+                      environment win, other keys in the file are ignored
   --dry-run           Print the gcloud command and exit without deploying
   --non-interactive   Never prompt; fail when a value is missing (the default
                       when stdin is not a terminal)
@@ -62,24 +66,64 @@ is_set() {
   [ -n "${!1+x}" ]
 }
 
+is_required() {
+  local name
+  for name in "${REQUIRED[@]}"; do
+    [ "$name" = "$1" ] && return 0
+  done
+  return 1
+}
+
+# Reads the REQUIRED keys from a dotenv file (KEY=value, optional `export`,
+# quotes and trailing comments) without running it, so the file's other values,
+# such as secrets, are never loaded. Keys already in the environment are kept.
+load_env_file() {
+  local file=$1 name line key value
+  local from_env=" " loaded=()
+  for name in "${REQUIRED[@]}"; do
+    is_set "$name" && from_env+="$name "
+  done
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
+    key=${BASH_REMATCH[2]}
+    value=${BASH_REMATCH[3]}
+    is_required "$key" || continue
+    [[ "$from_env" == *" $key "* ]] && continue
+    if [[ "$value" =~ ^\"(.*)\"[[:space:]]*(#.*)?$ ]] || [[ "$value" =~ ^\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
+      value=${BASH_REMATCH[1]}
+    else
+      value=$(printf '%s' "$value" | sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//')
+    fi
+    printf -v "$key" '%s' "$value"
+    loaded+=("$key")
+  done <"$file"
+  if [ ${#loaded[@]} -gt 0 ]; then
+    echo "Read $(printf '%s\n' "${loaded[@]}" | sort -u | tr '\n' ' ')from $file." >&2
+  fi
+}
+
 DRY_RUN=false
+ENV_FILE=""
 INTERACTIVE=true
 [ -t 0 ] || INTERACTIVE=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --project | --region | --service)
+    --project | --region | --service | --env-file)
       [ $# -ge 2 ] || die "$1 needs a value"
       case "$1" in
         --project) GCP_PROJECT_ID=$2 ;;
         --region) GCP_REGION=$2 ;;
         --service) SERVICE=$2 ;;
+        --env-file) ENV_FILE=$2 ;;
       esac
       shift
       ;;
     --project=*) GCP_PROJECT_ID=${1#*=} ;;
     --region=*) GCP_REGION=${1#*=} ;;
     --service=*) SERVICE=${1#*=} ;;
+    --env-file=*) ENV_FILE=${1#*=} ;;
     --dry-run) DRY_RUN=true ;;
     --non-interactive) INTERACTIVE=false ;;
     -h | --help)
@@ -94,6 +138,13 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ -n "$ENV_FILE" ]; then
+  [ -f "$ENV_FILE" ] || die "env file not found: $ENV_FILE"
+  load_env_file "$ENV_FILE"
+elif [ -f "$API_DIR/.env" ]; then
+  load_env_file "$API_DIR/.env"
+fi
 
 GCP_REGION=${GCP_REGION:-europe-west1}
 SERVICE=${SERVICE:-liftbig-api}
@@ -119,7 +170,7 @@ for name in "${REQUIRED[@]}"; do
 done
 
 if [ ${#missing[@]} -gt 0 ]; then
-  echo "Error: missing required values (set them in the environment):" >&2
+  echo "Error: missing required values (set them in the environment or the env file):" >&2
   for name in "${missing[@]}"; do
     echo "  $name: $(describe "$name")" >&2
   done

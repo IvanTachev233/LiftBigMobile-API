@@ -41,7 +41,8 @@ export class UsersController {
   @Post('me/password')
   @HttpCode(200)
   @ApiOperation({
-    summary: "Change the caller's password; returns a new token",
+    summary:
+      "Change the caller's password; returns new tokens and ends other sessions",
   })
   changePassword(
     @Body() dto: ChangePasswordDto,

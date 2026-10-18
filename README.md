@@ -35,7 +35,10 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `DB_PASSWORD` | `password123` | Database password (local placeholder only) |
 | `DB_NAME` | `liftbig_db` | Database name |
 | `PORT` | `3000` | HTTP port |
-| `JWT_SECRET` | `super-secret-key` | Signs access tokens (valid for 60 minutes). **Must be set to a strong secret anywhere other than your machine.** |
+| `JWT_SECRET` | `super-secret-key` | Signs access tokens. **Must be set to a strong secret anywhere other than your machine.** |
+| `JWT_ACCESS_TTL` | `15m` | Access token lifetime: a duration (`20s`, `15m`, `1h`) or a number of seconds. The app gets a new one with its refresh token (`POST /auth/refresh`) |
+| `REFRESH_IDLE_DAYS` | `30` | A signed-in device's session ends after this many days without a refresh |
+| `REFRESH_ABSOLUTE_DAYS` | `90` | A session ends this many days after sign-in, however often it is used |
 | `NODE_ENV` | unset | `production` turns on SSL for the DB connection and turns off automatic schema sync (unless `TYPEORM_SYNC=true`) |
 | `TYPEORM_SYNC` | unset | `true` forces TypeORM `synchronize` on, even in production |
 | `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
@@ -46,7 +49,7 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` page. Unset: the page shows `[OPERATOR NAME]` |
 | `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` page. Unset: the page shows `[CONTACT EMAIL]` |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `JWT_ACCESS_TTL`, `REFRESH_*_DAYS`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
 
 ## Tests and checks
 
@@ -94,17 +97,23 @@ Replacing `JWT_SECRET` signs every user out.
 
 ### Deploy
 
+The script reads `GCP_PROJECT_ID`, `MAIL_FROM`, `CORS_ORIGINS`, `PRIVACY_OPERATOR_NAME` and `PRIVACY_CONTACT_EMAIL` from the API's `.env` (`--env-file PATH` for another file); it reads only those keys, never the file's secrets. Values already in the environment win:
+
 ```bash
-export GCP_PROJECT_ID=<project-id>
-export MAIL_FROM='LiftBig <codes@your-domain>'
-export CORS_ORIGINS=                       # empty: no extra web origins
-export PRIVACY_OPERATOR_NAME='...'
-export PRIVACY_CONTACT_EMAIL='...'
+# .env (gitignored)
+GCP_PROJECT_ID=<project-id>
+MAIL_FROM='LiftBig <codes@your-domain>'
+CORS_ORIGINS=                              # empty: no extra web origins
+PRIVACY_OPERATOR_NAME='...'
+PRIVACY_CONTACT_EMAIL='...'
+```
+
+```bash
 scripts/deploy.sh --dry-run                # prints the gcloud command, deploys nothing
 scripts/deploy.sh
 ```
 
-In a terminal, the script asks for any value that isn't set, shows the command and asks before deploying. Without a terminal, or with `--non-interactive`, it doesn't ask: it exits with an error naming each missing value, and passes `--quiet` to `gcloud`. `--project`, `--region` and `--service` override the env vars. `scripts/deploy.sh --help` lists the options.
+In a terminal, the script asks for any value still not set, shows the command and asks before deploying. Without a terminal, or with `--non-interactive`, it doesn't ask: it exits with an error naming each missing value, and passes `--quiet` to `gcloud`. `--project`, `--region` and `--service` override the env vars. `scripts/deploy.sh --help` lists the options.
 
 | Name | Kind | Default | Notes |
 | --- | --- | --- | --- |
