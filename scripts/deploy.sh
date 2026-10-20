@@ -187,7 +187,8 @@ done
 
 env_vars="^${D}^MAIL_FROM=$MAIL_FROM${D}CORS_ORIGINS=$CORS_ORIGINS"
 env_vars+="${D}PRIVACY_OPERATOR_NAME=$PRIVACY_OPERATOR_NAME${D}PRIVACY_CONTACT_EMAIL=$PRIVACY_CONTACT_EMAIL"
-env_vars+="${D}TYPEORM_SYNC=true${D}RUN_MIGRATIONS=true"
+# Schema changes only through migrations; personal bests are already backfilled.
+env_vars+="${D}NODE_ENV=production${D}TYPEORM_SYNC=false${D}RUN_MIGRATIONS=true${D}BACKFILL_PBS=false"
 
 secret_refs=""
 for name in "${SECRETS[@]}"; do
@@ -232,7 +233,7 @@ if [ -z "$account" ] && [ "$INTERACTIVE" = true ]; then
 fi
 
 echo "Deploying $SERVICE to $GCP_PROJECT_ID ($GCP_REGION)${account:+ as $account}."
-echo "TYPEORM_SYNC and RUN_MIGRATIONS are on: entity changes alter the production schema."
+echo "Schema sync is off: entity changes reach production only through migrations."
 if [ "$INTERACTIVE" = true ]; then
   print_cmd
   read -r -p "Deploy now? [y/N] " answer
