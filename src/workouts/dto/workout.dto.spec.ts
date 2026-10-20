@@ -218,6 +218,27 @@ describe('UpdateWorkoutDto exercises (cards)', () => {
     expect(setErrors.map((e) => e.property)).toContain(property);
   });
 
+  it.each([
+    ['reps', { reps: 0, weight: 100 }],
+    ['reps', { reps: null, weight: 100 }],
+    ['actualReps', { reps: 5, weight: 100, actualReps: -1 }],
+  ])('rejects a set with %s below its minimum', async (property, set) => {
+    const dto = plainToInstance(UpdateWorkoutDto, {
+      exercises: [card({ sets: [set] })],
+    });
+    const errors = await validate(dto, { whitelist: true });
+    const setErrors =
+      errors[0]?.children?.[0]?.children?.[0]?.children?.[0]?.children ?? [];
+    expect(setErrors.map((e) => e.property)).toEqual([property]);
+  });
+
+  it('accepts 0 actualReps on a set', async () => {
+    const dto = plainToInstance(UpdateWorkoutDto, {
+      exercises: [card({ sets: [{ reps: 5, weight: 100, actualReps: 0 }] })],
+    });
+    expect(await validate(dto, { whitelist: true })).toHaveLength(0);
+  });
+
   it('rejects exercises that is not an array', async () => {
     const dto = plainToInstance(UpdateWorkoutDto, { exercises: card() });
     const errors = await validate(dto, { whitelist: true });
@@ -328,6 +349,17 @@ describe('SetResultDto', () => {
       expect(errors.map((e) => e.property)).toEqual([property]);
     },
   );
+
+  it('accepts 0 actualReps and rejects negative', async () => {
+    expect(
+      await validate(plainToInstance(SetResultDto, { actualReps: 0 }), strict),
+    ).toHaveLength(0);
+    const errors = await validate(
+      plainToInstance(SetResultDto, { actualReps: -1 }),
+      strict,
+    );
+    expect(errors.map((e) => e.property)).toEqual(['actualReps']);
+  });
 });
 
 describe('AddSetDto', () => {
@@ -355,5 +387,10 @@ describe('AddSetDto', () => {
       whitelist: true,
     });
     expect(errors.map((e) => e.property)).toContain(property);
+  });
+
+  it.each([0, -3, null])('rejects reps of %p', async (reps) => {
+    const errors = await validate(plainToInstance(AddSetDto, { reps }), strict);
+    expect(errors.map((e) => e.property)).toEqual(['reps']);
   });
 });

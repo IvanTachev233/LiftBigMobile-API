@@ -120,6 +120,18 @@ describe('CreateCoachWorkoutDto', () => {
     const errors = await validate(dto, whitelist);
     expect(setErrors(errors).map((e) => e.property)).toContain(property);
   });
+  it.each([
+    ['a blank', null],
+    ['zero', 0],
+    ['negative', -1],
+  ])('rejects %s planned reps', async (_, reps) => {
+    const dto = plainToInstance(
+      CreateCoachWorkoutDto,
+      createBody({ exercises: [card({ sets: [{ reps }] })] }),
+    );
+    const errors = await validate(dto, whitelist);
+    expect(setErrors(errors).map((e) => e.property)).toEqual(['reps']);
+  });
 });
 
 describe('UpdateCoachWorkoutDto', () => {

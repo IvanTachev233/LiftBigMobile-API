@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Min,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
@@ -23,8 +24,9 @@ export class CoachSetInput {
   @IsUUID()
   id?: string;
 
-  @ApiProperty({ type: 'integer' })
+  @ApiProperty({ type: 'integer', minimum: 1 })
   @IsInt()
+  @Min(1)
   reps: number;
 
   @ApiPropertyOptional({ type: Number, nullable: true })
