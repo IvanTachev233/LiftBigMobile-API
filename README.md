@@ -42,6 +42,7 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `NODE_ENV` | unset | `production` turns on SSL for the DB connection and turns off automatic schema sync (unless `TYPEORM_SYNC=true`) |
 | `TYPEORM_SYNC` | unset | `true` forces TypeORM `synchronize` on, even in production |
 | `RUN_MIGRATIONS` | unset | `true` runs pending migrations on startup |
+| `BACKFILL_PBS` | unset | On every start the API records personal bests for logged sets that have none yet (a one-off for sets saved before bests were recorded automatically). `false` skips this |
 | `SEED_PROGRAMS` | unset | On every start the API adds any missing sports, their required lifts, the global exercises they use and one published sample program per sport. `false` skips this |
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 | `MAIL_PROVIDER_KEY` | unset | Resend API key for sign-up and password reset codes (set as a Cloud Run secret). Unset: mails, codes included, are written to the log instead of sent |
@@ -70,7 +71,7 @@ npm run format      # Prettier
 
 Production runs on **Google Cloud Run**; the app's production build points at its `*.run.app` URL. [`scripts/deploy.sh`](scripts/deploy.sh) uploads this repo and Cloud Build builds it with the `Dockerfile`. Files ignored by `.gitignore` (`.env`, dumps, `node_modules`, `dist`) are not uploaded.
 
-Every deploy sets `TYPEORM_SYNC=true` and `RUN_MIGRATIONS=true`, so **entity changes alter the production schema on deploy**. Adding nullable columns is safe. Treat renames, type changes and column removals as destructive.
+Every deploy sets `NODE_ENV=production`, `TYPEORM_SYNC=false` and `RUN_MIGRATIONS=true`, so **production schema changes only through migrations** in `src/migrations`, run on startup. An entity change without a migration is not applied in production, even though local dev (no `NODE_ENV`) syncs it automatically. Deploys also set `BACKFILL_PBS=false`.
 
 ### One-time setup
 
@@ -124,7 +125,7 @@ In a terminal, the script asks for any value still not set, shows the command an
 | `CORS_ORIGINS` | env var | required, may be empty | Extra allowed web origins |
 | `PRIVACY_OPERATOR_NAME` | env var | required | Shown on `/privacy` |
 | `PRIVACY_CONTACT_EMAIL` | env var | required | Shown on `/privacy` |
-| `TYPEORM_SYNC`, `RUN_MIGRATIONS` | env var | always `true` | Set by the script |
+| `NODE_ENV`, `TYPEORM_SYNC`, `RUN_MIGRATIONS`, `BACKFILL_PBS` | env var | `production`, `false`, `true`, `false` | Set by the script |
 | `DATABASE_URL` | secret | Secret Manager `DATABASE_URL:latest` | Neon connection URL |
 | `JWT_SECRET` | secret | Secret Manager `JWT_SECRET:latest` | Signs access tokens |
 | `MAIL_PROVIDER_KEY` | secret | Secret Manager `MAIL_PROVIDER_KEY:latest` | Resend API key |
