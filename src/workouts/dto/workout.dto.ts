@@ -12,6 +12,7 @@ import {
   IsUrl,
   IsArray,
   MaxLength,
+  Min,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
@@ -62,8 +63,9 @@ export class WorkoutSetInput {
   @IsUUID()
   id?: string;
 
-  @ApiProperty({ type: 'integer' })
+  @ApiProperty({ type: 'integer', minimum: 1 })
   @IsInt()
+  @Min(1)
   reps: number;
 
   @ApiProperty({ type: Number, nullable: true })
@@ -88,9 +90,10 @@ export class WorkoutSetInput {
   @IsBoolean()
   made?: boolean | null;
 
-  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @ApiPropertyOptional({ type: 'integer', nullable: true, minimum: 0 })
   @IsOptional()
   @IsInt()
+  @Min(0)
   actualReps?: number | null;
 
   @ApiPropertyOptional({ type: Number, nullable: true })
@@ -179,8 +182,9 @@ export class AddSetDto {
   @IsUUID()
   id?: string;
 
-  @ApiProperty({ type: 'integer' })
+  @ApiProperty({ type: 'integer', minimum: 1 })
   @IsInt()
+  @Min(1)
   reps: number;
 
   @ApiPropertyOptional({ type: Number, nullable: true })
@@ -193,9 +197,10 @@ export class AddSetDto {
   @IsBoolean()
   made?: boolean | null;
 
-  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @ApiPropertyOptional({ type: 'integer', nullable: true, minimum: 0 })
   @IsOptional()
   @IsInt()
+  @Min(0)
   actualReps?: number | null;
 
   @ApiPropertyOptional({ type: Number, nullable: true })
@@ -215,9 +220,10 @@ export class SetResultDto {
   @IsBoolean()
   made?: boolean | null;
 
-  @ApiPropertyOptional({ type: 'integer', nullable: true })
+  @ApiPropertyOptional({ type: 'integer', nullable: true, minimum: 0 })
   @IsOptional()
   @IsInt()
+  @Min(0)
   actualReps?: number | null;
 
   @ApiPropertyOptional({ type: Number, nullable: true })
