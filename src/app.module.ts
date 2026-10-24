@@ -10,6 +10,7 @@ import { LiftsModule } from './lifts/lifts.module';
 import { PbBackfillModule } from './lifts/pb-backfill.module';
 import { UsersModule } from './users/users.module';
 import { PublicPagesModule } from './public-pages/public-pages.module';
+import { AppConfigModule } from './app-config/app-config.module';
 import { databaseConfig } from './config/database.config';
 
 @Module({
@@ -25,6 +26,7 @@ import { databaseConfig } from './config/database.config';
     PbBackfillModule,
     UsersModule,
     PublicPagesModule,
+    AppConfigModule,
   ],
   controllers: [AppController],
   providers: [AppService],
