@@ -110,13 +110,30 @@ describe('Agreements (e2e)', () => {
   });
 
   describe('GET /policies', () => {
+    const savedContact = process.env.PRIVACY_CONTACT_EMAIL;
+
+    afterEach(() => {
+      if (savedContact === undefined) delete process.env.PRIVACY_CONTACT_EMAIL;
+      else process.env.PRIVACY_CONTACT_EMAIL = savedContact;
+    });
+
     it('returns the current versions without auth', async () => {
+      delete process.env.PRIVACY_CONTACT_EMAIL;
       const res = await request(server()).get('/policies').expect(200);
       expect(res.body).toEqual({
         termsVersion: TERMS_VERSION,
         privacyVersion: PRIVACY_VERSION,
         consentTextVersions: CONSENT_TEXT_VERSIONS,
+        contactEmail: null,
       });
+    });
+
+    it('includes the contact email when it is set', async () => {
+      process.env.PRIVACY_CONTACT_EMAIL = ' privacy@example.com ';
+      const res = await request(server()).get('/policies').expect(200);
+      expect((res.body as { contactEmail: string }).contactEmail).toBe(
+        'privacy@example.com',
+      );
     });
   });
 
