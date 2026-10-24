@@ -9,6 +9,11 @@ import { AppModule } from '../src/app.module';
 import { User } from '../src/auth/user.entity';
 import { InMemoryMailTransport } from '../src/mail/in-memory-mail.transport';
 import { MailService } from '../src/mail/mail.service';
+import {
+  CONSENT_TEXT_VERSIONS,
+  PRIVACY_VERSION,
+  TERMS_VERSION,
+} from '../src/policies/policy-versions';
 import { E2E_DATABASE, e2eDataSourceOptions } from './e2e-database';
 
 // Boots the full AppModule on the e2e database, with the same global pipe
@@ -72,6 +77,18 @@ export function tokenUserId(token: string): string {
   return payload.sub;
 }
 
+// What a sign-up from the current app adds to name, email and password: the
+// current Terms and Privacy versions and the required training data consent
+export const SIGN_UP_AGREEMENT = {
+  acceptTerms: { terms: TERMS_VERSION, privacy: PRIVACY_VERSION },
+  consents: {
+    health_data: {
+      granted: true,
+      textVersion: CONSENT_TEXT_VERSIONS.health_data,
+    },
+  },
+};
+
 // Registers a user with a unique email, confirms it with the mailed code,
 // logs in and returns the login tokens.
 export async function registerAndLogin(
@@ -82,7 +99,7 @@ export async function registerAndLogin(
   const password = 'password123';
   await request(app.getHttpServer())
     .post('/auth/register')
-    .send({ name: 'E2E User', email, password, role })
+    .send({ name: 'E2E User', email, password, role, ...SIGN_UP_AGREEMENT })
     .expect(201);
   await request(app.getHttpServer())
     .post('/auth/verify-email')

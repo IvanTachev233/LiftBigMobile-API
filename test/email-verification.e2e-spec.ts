@@ -9,6 +9,7 @@ import {
   createExistingUser,
   mailedCode,
   sentMails,
+  SIGN_UP_AGREEMENT,
 } from './e2e-app';
 
 // Sign-up confirmation through HTTP: register, verify-email,
@@ -22,7 +23,7 @@ describe('Email verification (e2e)', () => {
   const register = (email: string) =>
     request(server())
       .post('/auth/register')
-      .send({ name: 'New Lifter', email, password });
+      .send({ name: 'New Lifter', email, password, ...SIGN_UP_AGREEMENT });
   const verify = (email: string, code: string) =>
     request(server()).post('/auth/verify-email').send({ email, code });
   const resend = (email: string) =>

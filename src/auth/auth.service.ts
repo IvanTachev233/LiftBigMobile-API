@@ -24,6 +24,8 @@ import {
   EmailCodeService,
   MAX_CODE_ATTEMPTS,
 } from '../email-codes/email-code.service';
+import { agreementItems } from '../policies/agreements';
+import { PoliciesService } from '../policies/policies.service';
 import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 
@@ -67,6 +69,7 @@ export class AuthService {
     private jwtService: JwtService,
     private emailCodes: EmailCodeService,
     private sessions: AuthSessionService,
+    private policies: PoliciesService,
   ) {}
 
   /** An access token carrying the user's current token version */
@@ -107,13 +110,16 @@ export class AuthService {
   }
 
   /**
-   * Creates the account unverified and mails it a VERIFY_EMAIL code; the
-   * token comes from verifyEmail. When the mail cannot be sent the account
-   * is removed again, so signing up can simply be retried.
+   * Creates the account unverified, with its Terms and Privacy acceptance
+   * and consents (400 unless they are current; see agreementItems), and
+   * mails it a VERIFY_EMAIL code; the token comes from verifyEmail. When the
+   * mail cannot be sent the account is removed again, so signing up can
+   * simply be retried.
    */
   async register(
     registerDto: RegisterDto,
   ): Promise<{ verificationRequired: true; email: string }> {
+    const agreement = agreementItems(registerDto, { signUp: true });
     const salt = await bcrypt.genSalt();
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
@@ -125,7 +131,10 @@ export class AuthService {
     });
 
     try {
-      await this.usersRepository.save(user);
+      await this.usersRepository.manager.transaction(async (manager) => {
+        await manager.save(user);
+        await this.policies.record(manager, user.id, agreement, registerDto);
+      });
     } catch (error) {
       if ((error as { code?: string }).code === '23505') {
         throw new ConflictException('Email already exists');

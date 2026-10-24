@@ -1,15 +1,23 @@
 import {
+  IsDefined,
   IsEmail,
   IsNotEmpty,
+  IsObject,
   IsString,
   IsOptional,
   IsEnum,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import {
+  AcceptTermsDto,
+  AgreementSourceDto,
+  ConsentsDto,
+} from '../../policies/dto/agreement.dto';
 
-export class RegisterDto {
+export class RegisterDto extends AgreementSourceDto {
   // Optional so older app builds that don't send a name can still register
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
@@ -31,6 +39,20 @@ export class RegisterDto {
   @IsOptional()
   @IsEnum(['COACH', 'CLIENT'])
   role?: 'COACH' | 'CLIENT';
+
+  // The current Terms and Privacy versions and the required consents; the
+  // versions are checked by agreementItems
+  @IsDefined()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => AcceptTermsDto)
+  acceptTerms: AcceptTermsDto;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ConsentsDto)
+  consents?: ConsentsDto;
 }
 
 export class LoginDto {

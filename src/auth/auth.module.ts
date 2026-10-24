@@ -13,11 +13,13 @@ import { accessTokenTtl } from './session-config';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { EmailCodesModule } from '../email-codes/email-codes.module';
+import { PoliciesModule } from '../policies/policies.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Invite, AuthSession]),
     EmailCodesModule,
+    PoliciesModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

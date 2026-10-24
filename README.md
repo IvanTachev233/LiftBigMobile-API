@@ -47,8 +47,8 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 | `MAIL_PROVIDER_KEY` | unset | Resend API key for sign-up and password reset codes (set as a Cloud Run secret). Unset: mails, codes included, are written to the log instead of sent |
 | `MAIL_FROM` | unset | Sender for those mails, e.g. `LiftBig <codes@your-domain>` on a domain verified in Resend. Required when `MAIL_PROVIDER_KEY` is set; the API refuses to start without it |
-| `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` page. Unset: the page shows `[OPERATOR NAME]` |
-| `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` page. Unset: the page shows `[CONTACT EMAIL]` |
+| `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` and `/terms` pages. Unset: the pages show `[OPERATOR NAME]` |
+| `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` and `/terms` pages. Unset: the pages show `[CONTACT EMAIL]` |
 | `APP_MIN_VERSION_CODE` | unset | Lowest Android versionCode still supported, from `GET /app-config`: older builds show a blocking "Update LiftBig" screen. Unset: no minimum. Anything but a whole number from 1 stops the API at startup |
 | `APP_LATEST_VERSION_CODE` | unset | The newest versionCode on Play: older builds are offered the update once per start (dismissible). Unset: no offer |
 
@@ -125,8 +125,8 @@ In a terminal, the script asks for any value still not set, shows the command an
 | `SERVICE` | input | `liftbig-api` | Cloud Run service name |
 | `MAIL_FROM` | env var | required | Sender of the code mails (see [Environment variables](#environment-variables)) |
 | `CORS_ORIGINS` | env var | required, may be empty | Extra allowed web origins |
-| `PRIVACY_OPERATOR_NAME` | env var | required | Shown on `/privacy` |
-| `PRIVACY_CONTACT_EMAIL` | env var | required | Shown on `/privacy` |
+| `PRIVACY_OPERATOR_NAME` | env var | required | Shown on `/privacy` and `/terms` |
+| `PRIVACY_CONTACT_EMAIL` | env var | required | Shown on `/privacy` and `/terms` |
 | `NODE_ENV`, `TYPEORM_SYNC`, `RUN_MIGRATIONS`, `BACKFILL_PBS` | env var | `production`, `false`, `true`, `false` | Set by the script |
 | `DATABASE_URL` | secret | Secret Manager `DATABASE_URL:latest` | Neon connection URL |
 | `JWT_SECRET` | secret | Secret Manager `JWT_SECRET:latest` | Signs access tokens |

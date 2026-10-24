@@ -14,6 +14,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { EmailCodePurpose } from '../email-codes/email-code.entity';
 import { EmailCodeService } from '../email-codes/email-code.service';
+import { PoliciesService } from '../policies/policies.service';
+import {
+  CONSENT_TEXT_VERSIONS,
+  PRIVACY_VERSION,
+  TERMS_VERSION,
+} from '../policies/policy-versions';
 import { AuthService } from './auth.service';
 import { AuthSessionService } from './auth-session.service';
 import { User } from './user.entity';
@@ -43,6 +49,7 @@ describe('AuthService', () => {
   let codes: { issue: jest.Mock; verify: jest.Mock };
   let sessions: { start: jest.Mock; refresh: jest.Mock; revoke: jest.Mock };
   let repo: Record<string, jest.Mock>;
+  let policies: { record: jest.Mock };
 
   beforeEach(async () => {
     users = [];
@@ -90,6 +97,7 @@ describe('AuthService', () => {
         (_entity: unknown, id: string, values: Partial<User>) =>
           repo.update(id, values) as Promise<void>,
       ),
+      save: jest.fn((user: StoredUser) => repo.save(user) as Promise<User>),
     };
     repo.manager = {
       transaction: jest.fn((work: (m: typeof manager) => Promise<unknown>) =>
@@ -100,6 +108,7 @@ describe('AuthService', () => {
       issue: jest.fn(() => Promise.resolve({ expiresAt: new Date() })),
       verify: jest.fn(() => Promise.resolve()),
     };
+    policies = { record: jest.fn(() => Promise.resolve()) };
     sessions = {
       start: jest.fn((user: { id: string }) =>
         Promise.resolve(`refresh-${user.id}`),
@@ -115,6 +124,7 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(Invite), useValue: {} },
         { provide: EmailCodeService, useValue: codes },
         { provide: AuthSessionService, useValue: sessions },
+        { provide: PoliciesService, useValue: policies },
         {
           provide: JwtService,
           useValue: {
@@ -151,6 +161,13 @@ describe('AuthService', () => {
       name: 'Jane',
       email: 'jane@example.com',
       password: 'secret1',
+      acceptTerms: { terms: TERMS_VERSION, privacy: PRIVACY_VERSION },
+      consents: {
+        health_data: {
+          granted: true,
+          textVersion: CONSENT_TEXT_VERSIONS.health_data,
+        },
+      },
     };
 
     it('creates the account unverified, mails a code and returns no token', async () => {
@@ -165,6 +182,41 @@ describe('AuthService', () => {
         expect.objectContaining({ id: users[0].id, email: dto.email }),
         EmailCodePurpose.VERIFY_EMAIL,
       );
+    });
+
+    it('records the accepted versions and consents with the new account', async () => {
+      await service.register({ ...dto, appVersionCode: 4 });
+      expect(policies.record).toHaveBeenCalledWith(
+        expect.anything(),
+        users[0].id,
+        {
+          documents: [
+            { document: 'terms', version: TERMS_VERSION },
+            { document: 'privacy', version: PRIVACY_VERSION },
+          ],
+          consents: [
+            {
+              purpose: 'health_data',
+              granted: true,
+              textVersion: CONSENT_TEXT_VERSIONS.health_data,
+            },
+          ],
+        },
+        expect.objectContaining({ appVersionCode: 4 }),
+      );
+    });
+
+    it('refuses outdated terms with 400 before creating anything', async () => {
+      const error = await caught(
+        service.register({
+          ...dto,
+          acceptTerms: { terms: '2026-01-01', privacy: PRIVACY_VERSION },
+        }),
+      );
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(users).toEqual([]);
+      expect(policies.record).not.toHaveBeenCalled();
+      expect(codes.issue).not.toHaveBeenCalled();
     });
 
     it('rejects a taken email with 409 and sends nothing', async () => {

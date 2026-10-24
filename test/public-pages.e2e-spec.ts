@@ -5,14 +5,19 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { User } from '../src/auth/user.entity';
 import {
+  PRIVACY_VERSION,
+  TERMS_VERSION,
+} from '../src/policies/policy-versions';
+import {
   createE2eApp,
   createExistingUser,
   registerAndLogin,
   sentMails,
+  SIGN_UP_AGREEMENT,
 } from './e2e-app';
 
-// The public privacy policy and account deletion pages, and the endpoint
-// the deletion page posts to.
+// The public privacy policy, terms and account deletion pages, and the
+// endpoint the deletion page posts to.
 describe('Public pages (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
@@ -47,7 +52,7 @@ describe('Public pages (e2e)', () => {
     await app.close();
   });
 
-  describe.each(['/privacy', '/delete-account'])('GET %s', (path) => {
+  describe.each(['/privacy', '/terms', '/delete-account'])('GET %s', (path) => {
     it('is HTML served without auth, with restrictive headers', async () => {
       const res = await request(server()).get(path).expect(200);
 
@@ -108,29 +113,42 @@ describe('Public pages (e2e)', () => {
         'Sets',
         'Lift records',
         'Settings',
-        'Weight unit',
-        'Rest timer',
+        'weight unit',
+        'rest timer',
         'Email codes',
         'Program enrollments',
-        'Invites',
-        // Purpose, processors, no ads or sharing
-        'only to run the app',
+        'invites',
+        'Sessions',
+        'Terms and policy acceptance',
+        'Consent choices',
+        // Purpose, legal basis, health data and choices
+        'Legal basis',
+        'Legitimate interests',
+        '<strong>explicit consent</strong>',
+        '<code>video_training</code>',
+        '<code>product_emails</code>',
+        'Profile → Privacy',
+        // Processors, transfers, no ads or sharing
         'Google Cloud',
         'Cloud Run',
         'Neon',
+        'AWS London',
         'Resend',
+        'United States',
         'No ads',
         'No analytics',
-        'We do not sell or share',
-        // Retention and deletion
-        'until you delete your account',
+        "We don't sell your data",
+        // Retention, deletion, rights and complaints
+        'Until you delete your account',
         '15 minutes',
         'Profile → Delete account',
         'href="delete-account"',
         'anonymised',
         "clients' history",
-        'Last updated',
-        '2026-10-14',
+        'acceptance and consent records',
+        'within one month',
+        'href="https://ico.org.uk/make-a-complaint"',
+        `Version ${PRIVACY_VERSION} · Last updated 21 October 2026`,
       ]) {
         expect(text).toContain(item);
       }
@@ -159,6 +177,61 @@ describe('Public pages (e2e)', () => {
       expect(text).toContain('href="mailto:privacy+x@example.com"');
       expect(text).not.toContain('[OPERATOR NAME]');
       expect(text).not.toContain('[CONTACT EMAIL]');
+    });
+  });
+
+  describe('GET /terms', () => {
+    const saved = {
+      name: process.env.PRIVACY_OPERATOR_NAME,
+      email: process.env.PRIVACY_CONTACT_EMAIL,
+    };
+
+    afterEach(() => {
+      for (const [key, value] of [
+        ['PRIVACY_OPERATOR_NAME', saved.name],
+        ['PRIVACY_CONTACT_EMAIL', saved.email],
+      ] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it('states its version, the age limit, safety, content, law and links', async () => {
+      const { text } = await request(server()).get('/terms').expect(200);
+
+      for (const item of [
+        '<h1>Terms of Use</h1>',
+        `Version ${TERMS_VERSION} · Last updated 21 October 2026`,
+        '<strong>18 or older</strong>',
+        '<strong>not medical advice</strong>',
+        'Coaches and clients',
+        'Your content',
+        'Filming and videos',
+        'Acceptable use',
+        'paid features',
+        'England and Wales',
+        '£100',
+        'href="privacy"',
+        'href="delete-account"',
+      ]) {
+        expect(text).toContain(item);
+      }
+      expect(text).not.toContain('(review)');
+    });
+
+    it('shows the operator and contact like the privacy page', async () => {
+      delete process.env.PRIVACY_OPERATOR_NAME;
+      delete process.env.PRIVACY_CONTACT_EMAIL;
+      const unset = (await request(server()).get('/terms').expect(200)).text;
+      expect(unset).toContain('[OPERATOR NAME]');
+      expect(unset).toContain('[CONTACT EMAIL]');
+
+      process.env.PRIVACY_OPERATOR_NAME = 'Lift & Co';
+      process.env.PRIVACY_CONTACT_EMAIL = 'privacy@example.com';
+      const set = (await request(server()).get('/terms').expect(200)).text;
+      expect(set).toContain('between you and Lift &amp; Co');
+      expect(set).toContain('href="mailto:privacy@example.com"');
+      expect(set).not.toContain('[OPERATOR NAME]');
     });
   });
 
@@ -265,7 +338,12 @@ describe('Public pages (e2e)', () => {
       const email = `e2e-unverified-${randomUUID()}@example.com`;
       await request(server())
         .post('/auth/register')
-        .send({ name: 'Unverified', email, password: 'password123' })
+        .send({
+          name: 'Unverified',
+          email,
+          password: 'password123',
+          ...SIGN_UP_AGREEMENT,
+        })
         .expect(201);
       const mailsBefore = mailsTo(email);
 
