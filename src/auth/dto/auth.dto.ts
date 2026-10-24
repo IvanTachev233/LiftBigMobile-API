@@ -18,7 +18,8 @@ import {
 } from '../../policies/dto/agreement.dto';
 
 export class RegisterDto extends AgreementSourceDto {
-  // Optional so older app builds that don't send a name can still register
+  // Optional: builds before the name field didn't send one (they can't sign
+  // up any more anyway, as acceptTerms is required)
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,

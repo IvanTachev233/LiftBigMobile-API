@@ -74,7 +74,6 @@ export class PoliciesService {
     const accepted = await this.acceptances
       .createQueryBuilder('acceptance')
       .select(['acceptance.document', 'acceptance.version'])
-      .distinct(true)
       .where('acceptance.userId = :userId', { userId })
       .getMany();
     const latest = await this.consentEvents
