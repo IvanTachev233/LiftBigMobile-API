@@ -15,6 +15,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { DataSource, LessThanOrEqual, MoreThan } from 'typeorm';
+import { jwtSecret } from '../auth/jwt-secret';
 import { User } from '../auth/user.entity';
 import { MailService } from '../mail/mail.service';
 import { emailCodeMail } from './email-code-mail';
@@ -38,7 +39,7 @@ export class EmailCodeService {
     private readonly mail: MailService,
     config: ConfigService,
   ) {
-    this.secret = config.get<string>('JWT_SECRET') || 'super-secret-key';
+    this.secret = jwtSecret(config);
   }
 
   /**

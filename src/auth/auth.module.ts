@@ -10,6 +10,7 @@ import { Invite } from './invite.entity';
 import { AuthSession } from './auth-session.entity';
 import { AuthSessionService } from './auth-session.service';
 import { accessTokenTtl } from './session-config';
+import { jwtSecret } from './jwt-secret';
 import { JwtStrategy } from './jwt.strategy';
 import { RolesGuard } from './roles.guard';
 import { EmailCodesModule } from '../email-codes/email-codes.module';
@@ -24,7 +25,7 @@ import { PoliciesModule } from '../policies/policies.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'super-secret-key',
+        secret: jwtSecret(configService),
         signOptions: {
           expiresIn: accessTokenTtl(
             configService.get<string>('JWT_ACCESS_TTL'),
