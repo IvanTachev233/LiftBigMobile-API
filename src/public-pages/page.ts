@@ -82,6 +82,10 @@ button:disabled { opacity: 0.6; cursor: default; }
 .secondary { background: transparent; color: var(--text); border: 1px solid var(--line-strong); }
 .alert { margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; background: var(--danger-tint); color: var(--danger-text); }
 .success { padding: 12px 14px; border-radius: 14px; background: var(--success-tint); color: var(--success-text); font-weight: 600; }
+code { padding: 1px 4px; border-radius: 4px; background: var(--surface); font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+table { width: 100%; margin: 0 0 16px; border-collapse: collapse; font-size: 15px; }
+th, td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { color: var(--text-2); font-weight: 600; }
 `;
 
 function hashSource(source: string): string {
@@ -96,6 +100,43 @@ export function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// Shown, highlighted, until the operator is configured
+function configured(value: string | undefined, placeholder: string) {
+  const text = value?.trim();
+  return text
+    ? { text, html: escapeHtml(text) }
+    : { text: null, html: `<span class="placeholder">${placeholder}</span>` };
+}
+
+/**
+ * The operator's name and a contact link as HTML, from PRIVACY_OPERATOR_NAME
+ * and PRIVACY_CONTACT_EMAIL.
+ */
+export function operatorHtml(env: NodeJS.ProcessEnv): {
+  name: string;
+  contact: string;
+} {
+  const operator = configured(env.PRIVACY_OPERATOR_NAME, '[OPERATOR NAME]');
+  const contact = configured(env.PRIVACY_CONTACT_EMAIL, '[CONTACT EMAIL]');
+  return {
+    name: operator.html,
+    contact: contact.text
+      ? `<a href="mailto:${contact.html}">${contact.html}</a>`
+      : contact.html,
+  };
+}
+
+/** "Version 2026-10-21 · Last updated 21 October 2026" for a dated version */
+export function versionLine(version: string): string {
+  const date = new Date(`${version}T00:00:00Z`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return `Version ${escapeHtml(version)} · Last updated ${date}`;
 }
 
 /**

@@ -4,14 +4,22 @@ import {
   Delete,
   Get,
   HttpCode,
+  Param,
+  ParseEnumPipe,
   Patch,
   Post,
+  Put,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/auth-user.interface';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import {
+  RecordAcceptancesDto,
+  SetConsentDto,
+} from '../policies/dto/agreement.dto';
+import { ConsentPurpose } from '../policies/policy-versions';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { DeleteAccountDto } from './dto/delete-account.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -36,6 +44,33 @@ export class UsersController {
   })
   updateMe(@Body() dto: UpdateMeDto, @Request() req: AuthenticatedRequest) {
     return this.users.updateMe(req.user, dto);
+  }
+
+  @Post('me/acceptances')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Record the Terms and Privacy versions and consents accepted on the update screen; 400 when a version is out of date',
+  })
+  recordAcceptances(
+    @Body() dto: RecordAcceptancesDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.users.recordAcceptances(req.user, dto);
+  }
+
+  @Put('me/consents/:purpose')
+  @ApiOperation({
+    summary:
+      'Give or withdraw one consent; health_data can only be withdrawn by deleting the account',
+  })
+  setConsent(
+    @Param('purpose', new ParseEnumPipe(ConsentPurpose))
+    purpose: ConsentPurpose,
+    @Body() dto: SetConsentDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.users.setConsent(req.user, purpose, dto);
   }
 
   @Post('me/password')

@@ -17,6 +17,12 @@ import {
   PASSWORD_LOCK_MINUTES,
 } from '../common/password-limits';
 import { User } from '../auth/user.entity';
+import {
+  RecordAcceptancesDto,
+  SetConsentDto,
+} from '../policies/dto/agreement.dto';
+import { PoliciesService } from '../policies/policies.service';
+import { ConsentPurpose } from '../policies/policy-versions';
 import { removeAccount } from './account-deletion';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
@@ -27,12 +33,29 @@ export class UsersService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly auth: AuthService,
+    private readonly policies: PoliciesService,
   ) {}
 
+  /** The profile, with what the user still has to accept and their consents */
   async me(user: AuthUser) {
     const { id, email, name, role, weightUnit, restSeconds } =
       await this.users.findOneByOrFail({ id: user.id });
-    return { id, email, name, role, weightUnit, restSeconds };
+    const agreements = await this.policies.status(id);
+    return { id, email, name, role, weightUnit, restSeconds, ...agreements };
+  }
+
+  async recordAcceptances(user: AuthUser, dto: RecordAcceptancesDto) {
+    await this.policies.accept(user.id, dto);
+    return this.me(user);
+  }
+
+  async setConsent(
+    user: AuthUser,
+    purpose: ConsentPurpose,
+    dto: SetConsentDto,
+  ) {
+    await this.policies.setConsent(user.id, purpose, dto);
+    return this.me(user);
   }
 
   /** Saves the fields sent; a body with none of them is rejected */

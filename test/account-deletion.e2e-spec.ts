@@ -22,7 +22,12 @@ import { Exercise } from '../src/workouts/entities/exercise.entity';
 import { WorkoutExercise } from '../src/workouts/entities/workout-exercise.entity';
 import { WorkoutSet } from '../src/workouts/entities/workout-set.entity';
 import { Workout } from '../src/workouts/entities/workout.entity';
-import { createE2eApp, E2eUser, registerAndLogin } from './e2e-app';
+import {
+  createE2eApp,
+  E2eUser,
+  registerAndLogin,
+  SIGN_UP_AGREEMENT,
+} from './e2e-app';
 import { createSportWithExercises } from './e2e-fixtures';
 
 describe('Account deletion (e2e)', () => {
@@ -49,7 +54,13 @@ describe('Account deletion (e2e)', () => {
   const registerAgain = (email: string, role: User['role'] = 'CLIENT') =>
     request(server())
       .post('/auth/register')
-      .send({ name: 'Again', email, password: 'password123', role });
+      .send({
+        name: 'Again',
+        email,
+        password: 'password123',
+        role,
+        ...SIGN_UP_AGREEMENT,
+      });
   const count = (entity: new () => object, where: object) =>
     dataSource.getRepository(entity).countBy(where);
 

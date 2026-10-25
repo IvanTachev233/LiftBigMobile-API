@@ -50,6 +50,17 @@ describe('Users me (e2e)', () => {
       role: 'CLIENT',
       weightUnit: 'kg',
       restSeconds: 120,
+      needsAcceptance: [],
+      consents: {
+        health_data: true,
+        video_training: false,
+        product_emails: false,
+      },
+      consentsUpdatedAt: {
+        health_data: expect.any(String) as string,
+        video_training: null,
+        product_emails: null,
+      },
     });
   });
 

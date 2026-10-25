@@ -47,10 +47,12 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `CORS_ORIGINS` | unset | Extra allowed CORS origins, comma-separated exact URLs (e.g. `https://liftbig.web.app`). Needed when a deployed web client calls the API from another origin |
 | `MAIL_PROVIDER_KEY` | unset | Resend API key for sign-up and password reset codes (set as a Cloud Run secret). Unset: mails, codes included, are written to the log instead of sent |
 | `MAIL_FROM` | unset | Sender for those mails, e.g. `LiftBig <codes@your-domain>` on a domain verified in Resend. Required when `MAIL_PROVIDER_KEY` is set; the API refuses to start without it |
-| `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` page. Unset: the page shows `[OPERATOR NAME]` |
-| `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` page. Unset: the page shows `[CONTACT EMAIL]` |
+| `PRIVACY_OPERATOR_NAME` | unset | Who runs the app, shown on the `/privacy` and `/terms` pages. Unset: the pages show `[OPERATOR NAME]` |
+| `PRIVACY_CONTACT_EMAIL` | unset | Contact email on the `/privacy` and `/terms` pages. Unset: the pages show `[CONTACT EMAIL]` |
+| `APP_MIN_VERSION_CODE` | unset | Lowest Android versionCode still supported, from `GET /app-config`: older builds show a blocking "Update LiftBig" screen. Unset: no minimum. Anything but a whole number from 1 stops the API at startup |
+| `APP_LATEST_VERSION_CODE` | unset | The newest versionCode on Play: older builds are offered the update once per start (dismissible). Unset: no offer |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `JWT_ACCESS_TTL`, `REFRESH_*_DAYS`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM` and the `PRIVACY_*` variables. `.env` is gitignored.
+Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `JWT_ACCESS_TTL`, `REFRESH_*_DAYS`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM`, the `PRIVACY_*` and the `APP_*_VERSION_CODE` variables. `.env` is gitignored.
 
 ## Tests and checks
 
@@ -123,14 +125,14 @@ In a terminal, the script asks for any value still not set, shows the command an
 | `SERVICE` | input | `liftbig-api` | Cloud Run service name |
 | `MAIL_FROM` | env var | required | Sender of the code mails (see [Environment variables](#environment-variables)) |
 | `CORS_ORIGINS` | env var | required, may be empty | Extra allowed web origins |
-| `PRIVACY_OPERATOR_NAME` | env var | required | Shown on `/privacy` |
-| `PRIVACY_CONTACT_EMAIL` | env var | required | Shown on `/privacy` |
+| `PRIVACY_OPERATOR_NAME` | env var | required | Shown on `/privacy` and `/terms` |
+| `PRIVACY_CONTACT_EMAIL` | env var | required | Shown on `/privacy` and `/terms` |
 | `NODE_ENV`, `TYPEORM_SYNC`, `RUN_MIGRATIONS`, `BACKFILL_PBS` | env var | `production`, `false`, `true`, `false` | Set by the script |
 | `DATABASE_URL` | secret | Secret Manager `DATABASE_URL:latest` | Neon connection URL |
 | `JWT_SECRET` | secret | Secret Manager `JWT_SECRET:latest` | Signs access tokens |
 | `MAIL_PROVIDER_KEY` | secret | Secret Manager `MAIL_PROVIDER_KEY:latest` | Resend API key |
 
-Env vars go through `--update-env-vars`, so any other env var on the service stays as it is. Secrets go through `--set-secrets`, so the service's secrets are exactly these three. The script also removes plain env vars with the secrets' names (`--remove-env-vars`, applied before the secrets), so a service that still has `DATABASE_URL` as a plain value switches to the secret in the same deploy. It never reads or prints a secret value.
+Env vars go through `--update-env-vars`, so any other env var on the service stays as it is. That includes `APP_MIN_VERSION_CODE` and `APP_LATEST_VERSION_CODE`: set them on the service itself (Cloud Run → the service → Edit & deploy new revision → Variables & Secrets) once the build they name is live on Play; the script doesn't set them. Secrets go through `--set-secrets`, so the service's secrets are exactly these three. The script also removes plain env vars with the secrets' names (`--remove-env-vars`, applied before the secrets), so a service that still has `DATABASE_URL` as a plain value switches to the secret in the same deploy. It never reads or prints a secret value.
 
 Older plain env vars such as `DB_HOST` or `DB_PASSWORD` stay on the service until you remove them. The API ignores them once `DATABASE_URL` is set:
 

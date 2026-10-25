@@ -5,11 +5,12 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { User } from '../src/auth/user.entity';
 import {
-  E2eUser,
   createE2eApp,
+  E2eUser,
   mailedCode,
   registerAndLogin,
   sentMails,
+  SIGN_UP_AGREEMENT,
 } from './e2e-app';
 
 // Forgot password through HTTP: forgot-password mails a RESET_PASSWORD code
@@ -88,7 +89,12 @@ describe('Password reset (e2e)', () => {
       const email = `e2e-unverified-${randomUUID()}@example.com`;
       await request(server())
         .post('/auth/register')
-        .send({ name: 'New Lifter', email, password: 'password123' })
+        .send({
+          name: 'New Lifter',
+          email,
+          password: 'password123',
+          ...SIGN_UP_AGREEMENT,
+        })
         .expect(201);
       await ageCodes(email);
       await forgot(email).expect(204);
