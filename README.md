@@ -15,10 +15,11 @@ Stack: NestJS 11, TypeORM 0.3, PostgreSQL 15. The mobile/web client lives in [Li
 
 ```bash
 npm install
+cp .env.example .env # once, then fill in JWT_SECRET and DB_* (see below)
 npm run start:dev    # watch mode on http://localhost:3000
 ```
 
-With no environment variables set, the API connects to `localhost:5433` as `liftbig` / `password123` to database `liftbig_db`, which matches the compose file's local database. Outside production, TypeORM `synchronize` is on, so the schema is created and updated from the entities on startup.
+The API won't start without `JWT_SECRET` (generate one with `openssl rand -base64 48`) and `DB_USERNAME`, `DB_PASSWORD` and `DB_NAME`; set those to the `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` values in `liftbig-app/.env`, which created the compose database. The host and port default to that database on `localhost:5433`. Outside production, TypeORM `synchronize` is on, so the schema is created and updated from the entities on startup.
 
 If your local database still has data from an older version (for example `program` tables), start once with `RUN_MIGRATIONS=true npm run start:dev`. Migrations run before `synchronize`; without them, `synchronize` drops old columns such as `workout_set.isCompleted` before the migration can move their data. The Docker stack already sets `RUN_MIGRATIONS=true`.
 
@@ -31,11 +32,11 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `DATABASE_URL` | unset | Full PostgreSQL connection URL (e.g. Neon). When set, the `DB_*` variables below are ignored |
 | `DB_HOST` | `localhost` | PostgreSQL host (`postgres` inside Docker Compose) |
 | `DB_PORT` | `5433` | PostgreSQL port (`5432` inside Docker Compose) |
-| `DB_USERNAME` | `liftbig` | Database user |
-| `DB_PASSWORD` | `password123` | Database password (local placeholder only) |
-| `DB_NAME` | `liftbig_db` | Database name |
+| `DB_USERNAME` | none (required without `DATABASE_URL`) | Database user. Missing: the API stops at startup |
+| `DB_PASSWORD` | none (required without `DATABASE_URL`) | Database password. Missing: the API stops at startup |
+| `DB_NAME` | none (required without `DATABASE_URL`) | Database name. Missing: the API stops at startup |
 | `PORT` | `3000` | HTTP port |
-| `JWT_SECRET` | `super-secret-key` | Signs access tokens. **Must be set to a strong secret anywhere other than your machine.** |
+| `JWT_SECRET` | none (required) | Signs access tokens and email codes. The API won't start without it, and with `NODE_ENV=production` it also refuses the old built-in default. Locally, generate one with `openssl rand -base64 48` and put it in `.env` |
 | `JWT_ACCESS_TTL` | `15m` | Access token lifetime: a duration (`20s`, `15m`, `1h`) or a number of seconds. The app gets a new one with its refresh token (`POST /auth/refresh`) |
 | `REFRESH_IDLE_DAYS` | `30` | A signed-in device's session ends after this many days without a refresh |
 | `REFRESH_ABSOLUTE_DAYS` | `90` | A session ends this many days after sign-in, however often it is used |
@@ -52,7 +53,7 @@ Other scripts: `npm run start` (no watch), `npm run start:debug`, `npm run build
 | `APP_MIN_VERSION_CODE` | unset | Lowest Android versionCode still supported, from `GET /app-config`: older builds show a blocking "Update LiftBig" screen. Unset: no minimum. Anything but a whole number from 1 stops the API at startup |
 | `APP_LATEST_VERSION_CODE` | unset | The newest versionCode on Play: older builds are offered the update once per start (dismissible). Unset: no offer |
 
-Set the database variables, `NODE_ENV`, `TYPEORM_SYNC` and `RUN_MIGRATIONS` as real environment variables (shell, Docker, Cloud Run). `@nestjs/config` also loads a `.env` file from the working directory, but `src/config/database.config.ts` reads its values before that file is loaded, so a `.env` only reliably covers `JWT_SECRET`, `JWT_ACCESS_TTL`, `REFRESH_*_DAYS`, `PORT`, `CORS_ORIGINS`, `MAIL_PROVIDER_KEY`, `MAIL_FROM`, the `PRIVACY_*` and the `APP_*_VERSION_CODE` variables. `.env` is gitignored.
+Locally, every variable above can live in a `.env` file in this folder: `src/config/database.config.ts` loads it when it exists (it runs before `@nestjs/config`), and variables already set in the shell, Docker or Cloud Run win over it. That covers `npm run start:dev`, the tests and the migration commands. `.env` is gitignored; [`.env.example`](.env.example) is the committed reference. Never put `DATABASE_URL` or other production values in it.
 
 ## Tests and checks
 
@@ -65,7 +66,7 @@ npm run lint        # ESLint with --fix: it rewrites files
 npm run format      # Prettier
 ```
 
-`npm run test:e2e` needs the postgres container (`docker compose up -d postgres` from the workspace root). It creates a `liftbig_e2e` database on that server if it is missing and rebuilds its schema from scratch for each test app, so `liftbig_db` is never touched. It refuses to run while `DATABASE_URL` is set.
+`npm run test:e2e` needs the postgres container (`docker compose up -d postgres` from the workspace root). It creates a `liftbig_e2e` database on that server if it is missing and rebuilds its schema from scratch for each test app, so `liftbig_db` is never touched. It refuses to run while `DATABASE_URL` is set, and like the API it needs `JWT_SECRET` and the `DB_*` values from `.env` (CI sets its own throwaway ones). Unit tests need none of them.
 
 ## Deployment
 
