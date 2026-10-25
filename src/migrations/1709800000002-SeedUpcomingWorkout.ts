@@ -10,7 +10,7 @@ export class SeedUpcomingWorkout1709800000002 implements MigrationInterface {
     // 1. Ensure the user exists so foreign key constraints pass
     // If the user already exists because the user created it through the app, ON CONFLICT DO NOTHING handles it for id constraint.
     const passwordHash =
-      '$2b$10$CJNXU5gWtP1X7geaPdAWE.b0/yJsi3.VAMHRurccepu15AtiOxVwq'; // 'password123'
+      '$2b$10$CJNXU5gWtP1X7geaPdAWE.b0/yJsi3.VAMHRurccepu15AtiOxVwq'; // A shared demo password; 1709800000011 makes it unusable
     await queryRunner.query(
       `INSERT INTO "user" ("id", "email", "passwordHash", "role") 
        VALUES ($1, 'mockuser_specific@liftbig.com', $2, 'CLIENT')
